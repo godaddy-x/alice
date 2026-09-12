@@ -17,6 +17,7 @@ package message
 import (
 	"context"
 	"errors"
+	"reflect"
 
 	"github.com/getamis/alice/types"
 )
@@ -61,15 +62,42 @@ func (m *MsgChans) Push(msg types.Message) error {
 }
 
 func (m *MsgChans) Pop(ctx context.Context, t types.MessageType) (types.Message, error) {
-	ch, ok := m.chs[t]
-	if !ok {
+	return m.PopAny(ctx, t)
+}
+
+func (m *MsgChans) PopAny(ctx context.Context, ts ...types.MessageType) (types.Message, error) {
+	if len(ts) == 0 {
 		return nil, ErrUndefinedMessage
 	}
+	if len(ts) == 1 {
+		ch, ok := m.chs[ts[0]]
+		if !ok {
+			return nil, ErrUndefinedMessage
+		}
+		select {
+		case msg := <-ch:
+			return msg, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 
-	select {
-	case msg := <-ch:
-		return msg, nil
-	case <-ctx.Done():
+	cases := make([]reflect.SelectCase, len(ts)+1)
+	for i, t := range ts {
+		ch, ok := m.chs[t]
+		if !ok {
+			return nil, ErrUndefinedMessage
+		}
+		cases[i] = reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ch)}
+	}
+	cases[len(ts)] = reflect.SelectCase{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())}
+
+	chosen, recv, recvOK := reflect.Select(cases)
+	if chosen == len(ts) {
 		return nil, ctx.Err()
 	}
+	if !recvOK {
+		return nil, ctx.Err()
+	}
+	return recv.Interface().(types.Message), nil
 }

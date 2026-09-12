@@ -55,6 +55,111 @@ func (m *Message) GetEchoMessage() types.Message {
 				// Psi:             m.GetRound1().GetPsi(),
 			},
 		}
+		return mm
+	case Type_Round2:
+		src := m.GetRound2()
+		if src == nil {
+			return nil
+		}
+		// Pairwise D/F differ per recipient; Γ_i must be consistent (global broadcast component).
+		mm.Body = &Message_Round2{
+			Round2: &Round2Msg{
+				Gamma: cloneEcPointMsg(src.GetGamma()),
+			},
+		}
+		return mm
+	case Type_Round3:
+		src := m.GetRound3()
+		if src == nil {
+			return nil
+		}
+		// psidoublepai is pairwise; echo only δ and BigDelta (must match across recipients).
+		mm.Body = &Message_Round3{
+			Round3: &Round3Msg{
+				Delta:    src.GetDelta(),
+				BigDelta: cloneEcPointMsg(src.GetBigDelta()),
+			},
+		}
+		return mm
+	case Type_Round4:
+		src := m.GetRound4()
+		if src == nil {
+			return nil
+		}
+		mm.Body = &Message_Round4{
+			Round4: &Round4Msg{
+				Sigmai: cloneBytes(src.GetSigmai()),
+			},
+		}
+		return mm
+	case Type_Err1:
+		src := m.GetErr1()
+		if src == nil {
+			return nil
+		}
+		mm.Body = &Message_Err1{
+			Err1: &Err1Msg{
+				KgammaCiphertext: cloneBytes(src.GetKgammaCiphertext()),
+				MulProof:         cloneMul(src.GetMulProof()),
+				Peers:            cloneErr1Peers(src.GetPeers()),
+			},
+		}
+		return mm
+	case Type_Err2:
+		src := m.GetErr2()
+		if src == nil {
+			return nil
+		}
+		mm.Body = &Message_Err2{
+			Err2: &Err2Msg{
+				KMulBkShareCiphertext: cloneBytes(src.GetKMulBkShareCiphertext()),
+				Peers:                 cloneErr2Peers(src.GetPeers()),
+				Chi:                   cloneBytes(src.GetChi()),
+			},
+		}
+		return mm
 	}
 	return nil
+}
+
+func cloneErr1Peers(in map[string]*Err1PeerMsg) map[string]*Err1PeerMsg {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]*Err1PeerMsg, len(in))
+	for k, v := range in {
+		if v == nil {
+			out[k] = nil
+			continue
+		}
+		out[k] = &Err1PeerMsg{
+			DecModQ:           cloneDecry(v.GetDecModQ()),
+			ProductCiphertext: cloneBytes(v.GetProductCiphertext()),
+			D:                 cloneBytes(v.GetD()),
+			F:                 cloneBytes(v.GetF()),
+		}
+	}
+	return out
+}
+
+func cloneErr2Peers(in map[string]*Err2PeerMsg) map[string]*Err2PeerMsg {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]*Err2PeerMsg, len(in))
+	for k, v := range in {
+		if v == nil {
+			out[k] = nil
+			continue
+		}
+		out[k] = &Err2PeerMsg{
+			MulStarProof:      cloneMulStar(v.GetMulStarProof()),
+			DecModQ:           cloneDecry(v.GetDecModQ()),
+			ProductCiphertext: cloneBytes(v.GetProductCiphertext()),
+			D:                 cloneBytes(v.GetD()),
+			F:                 cloneBytes(v.GetF()),
+			DecModQKm:         cloneDecry(v.GetDecModQKm()),
+		}
+	}
+	return out
 }

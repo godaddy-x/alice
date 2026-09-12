@@ -250,12 +250,20 @@ func (p *Paillier) NewPubKeyFromBytes(bs []byte) (homo.Pubkey, error) {
 	if err != nil {
 		return nil, err
 	}
-	for i := 0; i < len(primes); i++ {
-		if new(big.Int).Mod(pubKey.n, big.NewInt(primes[i])).Cmp(big0) == 0 {
-			return nil, ErrSmallFactorPubKey
-		}
+	if err := ValidateNoSmallFactor(pubKey.n); err != nil {
+		return nil, err
 	}
 	return pubKey, nil
+}
+
+// ValidateNoSmallFactor rejects moduli with small prime factors (CVE-2023-33241 mitigation).
+func ValidateNoSmallFactor(n *big.Int) error {
+	for i := 0; i < len(primes); i++ {
+		if new(big.Int).Mod(n, big.NewInt(primes[i])).Cmp(big0) == 0 {
+			return ErrSmallFactorPubKey
+		}
+	}
+	return nil
 }
 
 func (p *Paillier) GetMtaProof(curve elliptic.Curve, beta *big.Int, b *big.Int) ([]byte, error) {

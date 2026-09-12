@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/getamis/alice/types"
 	"github.com/getamis/sirius/log"
@@ -28,6 +29,7 @@ var (
 	ErrBadMsg                 = errors.New("bad message")
 	ErrInvalidStateTransition = errors.New("invalid state transition")
 	ErrDupMsg                 = errors.New("duplicate message")
+	ErrAbortTimeout           = errors.New("abort message collection timed out")
 )
 
 type MsgMain struct {
@@ -38,9 +40,10 @@ type MsgMain struct {
 	currentHandler types.Handler
 	listener       types.StateChangedListener
 
-	lock        sync.RWMutex
-	handlerLock sync.RWMutex
-	cancel      context.CancelFunc
+	lock         sync.RWMutex
+	handlerLock  sync.RWMutex
+	cancel       context.CancelFunc
+	abortTimeout time.Duration
 }
 
 func NewMsgMain(id string, peerNum uint32, listener types.StateChangedListener, initHandler types.Handler, msgTypes ...types.MessageType) *MsgMain {
@@ -52,6 +55,14 @@ func NewMsgMain(id string, peerNum uint32, listener types.StateChangedListener, 
 		currentHandler: initHandler,
 		listener:       listener,
 	}
+}
+
+// SetAbortTimeout limits how long an AbortCollectHandler waits for peer Err messages.
+// Zero disables the timeout (default).
+func (t *MsgMain) SetAbortTimeout(d time.Duration) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	t.abortTimeout = d
 }
 
 func (t *MsgMain) Start() {
@@ -117,20 +128,61 @@ func (t *MsgMain) messageLoop(ctx context.Context) (err error) {
 
 	handler := t.GetHandler()
 	msgType := handler.MessageType()
-	msgCount := uint32(0)
+	msgCount := initialMsgCount(handler)
 	for {
-		// 1. Pop messages
+		// 1. Pop messages (including abort types when supported)
 		// 2. Check if the message is handled before
 		// 3. Handle the message
 		// 4. Check if we collect enough messages
 		// 5. If yes, finalize the handler. Otherwise, wait for the next message
-		msg, err := t.msgChs.Pop(ctx, msgType)
+		msg, err := t.popMessage(ctx, handler, msgType)
 		if err != nil {
 			t.logger.Warn("Failed to pop message", "err", err)
 			return err
 		}
 		id := msg.GetId()
 		logger := t.logger.New("msgType", msgType, "fromId", id)
+
+		if msg.GetMessageType() != msgType {
+			abortHandler, ok := handler.(AbortHandler)
+			if !ok {
+				logger.Warn("Unexpected message type")
+				return ErrBadMsg
+			}
+			nextHandler, err := abortHandler.OnAbortMessage(logger, msg)
+			if err != nil {
+				logger.Warn("Failed to switch abort handler", "err", err)
+				return err
+			}
+			t.handlerLock.Lock()
+			t.currentHandler = nextHandler
+			handler = t.currentHandler
+			t.handlerLock.Unlock()
+			newType := handler.MessageType()
+			logger.Info("Change handler for abort", "oldType", msgType, "newType", newType)
+			msgType = newType
+			msgCount = initialMsgCount(handler)
+			if msgCount >= handler.GetRequiredMessageCount() {
+				nextHandler, err := handler.Finalize(logger)
+				if err != nil {
+					logger.Warn("Failed to finalize abort handler", "err", err)
+					return err
+				}
+				if nextHandler == nil {
+					return nil
+				}
+				t.handlerLock.Lock()
+				t.currentHandler = nextHandler
+				handler = t.currentHandler
+				t.handlerLock.Unlock()
+				newType = handler.MessageType()
+				logger.Info("Change handler", "oldType", msgType, "newType", newType)
+				msgType = newType
+				msgCount = initialMsgCount(handler)
+			}
+			continue
+		}
+
 		if handler.IsHandled(logger, id) {
 			logger.Warn("The message is handled before")
 			return ErrDupMsg
@@ -163,8 +215,51 @@ func (t *MsgMain) messageLoop(ctx context.Context) (err error) {
 		newType := handler.MessageType()
 		logger.Info("Change handler", "oldType", msgType, "newType", newType)
 		msgType = newType
-		msgCount = uint32(0)
+		msgCount = initialMsgCount(handler)
 	}
+}
+
+func initialMsgCount(handler types.Handler) uint32 {
+	if c, ok := handler.(InitialMsgCountHandler); ok {
+		return c.InitialMsgCount()
+	}
+	return 0
+}
+
+func (t *MsgMain) popMessage(ctx context.Context, handler types.Handler, msgType types.MessageType) (types.Message, error) {
+	popCtx := ctx
+	cancel := func() {}
+	abortTimed := false
+	t.lock.RLock()
+	timeout := t.abortTimeout
+	t.lock.RUnlock()
+	if timeout > 0 {
+		if ac, ok := handler.(AbortCollectHandler); ok && ac.AbortCollecting() {
+			popCtx, cancel = context.WithTimeout(ctx, timeout)
+			abortTimed = true
+		}
+	}
+	defer cancel()
+
+	var (
+		msg types.Message
+		err error
+	)
+	if ah, ok := handler.(AbortHandler); ok {
+		msgTypes := make([]types.MessageType, 0, len(ah.AbortMessageTypes())+1)
+		msgTypes = append(msgTypes, msgType)
+		msgTypes = append(msgTypes, ah.AbortMessageTypes()...)
+		msg, err = t.msgChs.PopAny(popCtx, msgTypes...)
+	} else {
+		msg, err = t.msgChs.Pop(popCtx, msgType)
+	}
+	if err != nil {
+		if abortTimed && errors.Is(err, context.DeadlineExceeded) {
+			return nil, ErrAbortTimeout
+		}
+		return nil, err
+	}
+	return msg, nil
 }
 
 func (t *MsgMain) setState(newState types.MainState) error {

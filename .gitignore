@@ -24,3 +24,4 @@ profile.out
 # Exclude example binaries
 example/example
 .DS_Store
+.idea/

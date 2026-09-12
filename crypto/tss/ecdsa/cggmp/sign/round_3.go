@@ -15,14 +15,12 @@
 package sign
 
 import (
-	"errors"
 	"math/big"
 
 	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
 	"github.com/getamis/alice/crypto/tss"
 	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 	"github.com/getamis/alice/crypto/zkproof/paillier"
-	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types"
 	"github.com/getamis/sirius/log"
 )
@@ -86,7 +84,11 @@ func (p *round3Handler) HandleMessage(logger log.Logger, message types.Message) 
 		return err
 	}
 
-	tempDelta, _ := new(big.Int).SetString(round3.Delta, 10)
+	tempDelta, err := cggmp.ParseBigIntString(round3.Delta, 10)
+	if err != nil {
+		logger.Debug("Failed to parse delta", "err", err)
+		return err
+	}
 	peer.round3Data = &round3Data{
 		delta: tempDelta,
 	}
@@ -118,11 +120,7 @@ func (p *round3Handler) Finalize(logger log.Logger) (types.Handler, error) {
 	// Do verification
 	gDelta := pt.NewBase(curve).ScalarMult(delta)
 	if !gDelta.Equal(bigDelta) {
-		err := p.buildDeltaVerifyFailureMsg()
-		if err != nil {
-			logger.Warn("Failed to buildDeltaVerifyFailureMsg", "err", err)
-		}
-		return nil, errors.New("invalid delta")
+		return p.enterErr1Phase(logger, ErrInvalidDelta)
 	}
 	R := p.sumGamma.ScalarMult(new(big.Int).ModInverse(delta, curveN))
 	if R.IsIdentity() {
@@ -151,15 +149,16 @@ func (p *round3Handler) Finalize(logger log.Logger) (types.Handler, error) {
 }
 
 func (p *round3Handler) buildDeltaVerifyFailureMsg() error {
-	// A: Reprove that {Dj,i}j ̸=i are well-formed according to prod_ell^aff-g , for l ̸= j,i.
 	curve := p.pubKey.GetCurve()
 	curveN := curve.Params().N
+	p.delta = new(big.Int).Mod(p.delta, curveN)
 	for _, peer := range p.peers {
 		ownPed := p.own.para
 		n := peer.para.GetN()
 		// Verify psi
 		err := peer.round2Data.psiProof.Verify(paillier.NewS256(), peer.ssidWithBk, p.paillierKey.GetN(), n, p.kCiphertext, peer.round2Data.d, peer.round2Data.f, ownPed, peer.round2Data.allGammaPoint)
 		if err != nil {
+			p.blamePeer(peer.Id)
 			return err
 		}
 	}
@@ -178,47 +177,25 @@ func (p *round3Handler) buildDeltaVerifyFailureMsg() error {
 	}
 
 	deltaCiphertext := new(big.Int).Set(kMulGammaCiphertext)
-	rhoSalt := new(big.Int).Set(randomRho)
-	alphaDeltaWithSaltOne := new(big.Int).Add(big1, p.paillierKey.GetN())
-	paillierNnthRoot, err := p.paillierKey.GetNthRoot()
+	nSquare := p.paillierKey.GetNSquare()
+
+	for _, peer := range p.peers {
+		deltaCiphertext.Mul(peer.round2Data.d, deltaCiphertext)
+		deltaCiphertext.Mul(new(big.Int).ModInverse(peer.round1Data.F, nSquare), deltaCiphertext)
+		deltaCiphertext.Mod(deltaCiphertext, nSquare)
+	}
+
+	// Scheme A': prove DecModQ on untranslated C0 with x=(δ+Σc·N) mod q.
+	finalC := deltaCiphertext
+	proofX := cggmp.DecModQPublicX(p.delta, curveN, peerPaillierNs(p.peers), peerBetaCounts(p.peers, false))
+	y, salt, err := decModQWitness(p.paillierKey, finalC, proofX, curveN)
 	if err != nil {
 		return err
 	}
 
-	tempResult := new(big.Int).Set(kMulGamma)
-	// C: Prove in ZK that δi is the plaintext value mod q of the ciphertext obtained as Hi*prod_{j\not=i}D_{i,j}*F_{j,i}
-	for _, peer := range p.peers {
-		tempDSalt := new(big.Int).Exp(alphaDeltaWithSaltOne, new(big.Int).Neg(peer.round2Data.alpha), p.paillierKey.GetNSquare())
-		tempDSalt.Mul(tempDSalt, peer.round2Data.d)
-		tempDSalt.Exp(tempDSalt, paillierNnthRoot, p.paillierKey.GetNSquare())
-
-		rhoSalt.Mul(rhoSalt, tempDSalt)
-		rhoSalt.Mul(rhoSalt, new(big.Int).ModInverse(peer.round1Data.r, p.paillierKey.GetNSquare()))
-		rhoSalt.Mod(rhoSalt, p.paillierKey.GetNSquare())
-
-		deltaCiphertext.Mul(peer.round2Data.d, deltaCiphertext)
-		deltaCiphertext.Mul(new(big.Int).ModInverse(p.own.round1Data.F, p.paillierKey.GetNSquare()), deltaCiphertext)
-		deltaCiphertext.Mod(deltaCiphertext, p.paillierKey.GetNSquare())
-
-		tempResult.Add(tempResult, peer.round2Data.alpha)
-		tempResult.Add(tempResult, peer.round1Data.beta)
-	}
-
-	peersMsg := make(map[string]*Err1PeerMsg)
-	for _, peer := range p.peers {
-		ped := peer.para
-		translateBeta := new(big.Int).Exp(alphaDeltaWithSaltOne, new(big.Int).Mul(new(big.Int).Neg(peer.round1Data.countDelta), ped.GetN()), p.paillierKey.GetNSquare())
-		deltaCiphertext.Mul(deltaCiphertext, translateBeta)
-		deltaCiphertext.Mod(deltaCiphertext, p.paillierKey.GetNSquare())
-
-		proofDec, err := paillierzkproof.NewDecryMessage(paillierzkproof.NewS256(), p.own.ssidWithBk, tempResult, rhoSalt, p.paillierKey.GetN(), deltaCiphertext, p.delta, ped)
-		if err != nil {
-			return err
-		}
-		peersMsg[peer.Id] = &Err1PeerMsg{
-			DecryProoof: proofDec,
-			Count:       peer.round1Data.countDelta.Bytes(),
-		}
+	peersMsg, err := buildErr1PeerMsgs(p, y, salt, finalC, proofX)
+	if err != nil {
+		return err
 	}
 
 	p.err1Msg = &Message{
@@ -226,10 +203,9 @@ func (p *round3Handler) buildDeltaVerifyFailureMsg() error {
 		Type: Type_Err1,
 		Body: &Message_Err1{
 			Err1: &Err1Msg{
-				KgammaCiphertext:   kMulGammaCiphertext.Bytes(),
-				MulProof:           proofMul,
-				ProductrCiphertext: deltaCiphertext.Bytes(),
-				Peers:              peersMsg,
+				KgammaCiphertext: kMulGammaCiphertext.Bytes(),
+				MulProof:         proofMul,
+				Peers:            peersMsg,
 			},
 		},
 	}

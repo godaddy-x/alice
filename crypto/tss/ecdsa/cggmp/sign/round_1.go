@@ -86,6 +86,9 @@ type round1Handler struct {
 	peerNum     uint32
 	peers       map[string]*peer
 	own         *peer
+
+	onAbortMsg    func(*Message)
+	onBlamedPeers func(map[string]struct{})
 }
 
 func newRound1Handler(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.ECPoint, partialPubKey map[string]*pt.ECPoint, paillierKey *paillier.Paillier, ped map[string]*paillierzkproof.PederssenOpenParameter, bks map[string]*birkhoffinterpolation.BkParameter, msg []byte, peerManager types.PeerManager) (*round1Handler, error) {
@@ -108,6 +111,26 @@ func newRound1Handler(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.
 	}
 	err := bkss.CheckValid(threshold, curveN)
 	if err != nil {
+		return nil, err
+	}
+	if err := cggmp.ValidateAllPed(ped, curveN); err != nil {
+		return nil, err
+	}
+	if err := cggmp.ValidateIAParticipantCount(int(peerManager.NumPeers()) + 1); err != nil {
+		return nil, err
+	}
+	ysFromPartialPubKey := make([]*pt.ECPoint, len(bkss))
+	ysFromPartialPubKey[0] = partialPubKey[selfId]
+	j := 1
+	for id, bk := range bks {
+		if id == selfId {
+			continue
+		}
+		_ = bk
+		ysFromPartialPubKey[j] = partialPubKey[id]
+		j++
+	}
+	if err := bkss.ValidatePublicKey(ysFromPartialPubKey, threshold, pubKey); err != nil {
 		return nil, err
 	}
 

@@ -15,7 +15,6 @@
 package signSix
 
 import (
-	"errors"
 	"math/big"
 
 	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
@@ -107,11 +106,7 @@ func (p *round6Handler) Finalize(logger log.Logger) (types.Handler, error) {
 	}
 
 	if !sumS.Equal(p.pubKey) {
-		err := p.buildErr2Msg()
-		if err != nil {
-			logger.Warn("Failed to buildErr1Msg", "err", err)
-		}
-		return nil, errors.New("failed verification of the public key")
+		return p.enterErr2Phase(logger, ErrIncorrectSig)
 	}
 
 	// Signing
@@ -181,7 +176,7 @@ func (p *round6Handler) buildErr2Msg() error {
 
 	p.roundErr2Msg = &Message{
 		Id:   p.own.Id,
-		Type: Type_Err1,
+		Type: Type_Err2,
 		Body: &Message_Err2{
 			Err2: &Err2Msg{
 				K:           p.k.Bytes(),
@@ -298,6 +293,10 @@ func (p *round6Handler) ProcessErr2Msg(msgs []*Message) (map[string]struct{}, er
 
 		for j, m2 := range msgs {
 			if i == j {
+				continue
+			}
+			// Self is already folded in via local (k_i·X_j − α̂) above; skip to avoid double-count.
+			if m2.GetId() == p.peerManager.SelfID() {
 				continue
 			}
 			msg2 := m2.GetErr2()

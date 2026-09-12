@@ -76,26 +76,33 @@ message Round4Msg {
 message Err1Msg {
     bytes kgammaCiphertext = 1;
     getamis.alice.crypto.zkproof.paillier.MulMessage mulProof = 2;
-    bytes productrCiphertext = 3;
-    // key => id
-    map<string, Err1PeerMsg> peers = 4;
-
+    map<string, Err1PeerMsg> peers = 3;
 }
 
 message Err1PeerMsg {
-    getamis.alice.crypto.zkproof.paillier.DecryMessage decryProoof = 1;
-    bytes count = 2;
+    getamis.alice.crypto.zkproof.paillier.DecryMessage decModQ = 1;
+    // Untranslated MtA product C0; DecModQ uses PublicX(δ)=(δ+Σc·N) mod q.
+    bytes productCiphertext = 2;
+    // D_{peer→prover} (under prover Paillier) used in the product.
+    bytes d = 3;
+    // F_{prover→peer} (under prover Paillier) used in the product.
+    bytes f = 4;
 }
 
 message Err2Msg {
     bytes kMulBkShareCiphertext = 1;
-    bytes productrCiphertext = 2;
-    // key => id
-    map<string, Err2PeerMsg> peers = 3;
+    map<string, Err2PeerMsg> peers = 2;
+    // χ_i for Scheme A' (PublicX(χ) and σ−r·χ).
+    bytes chi = 3;
 }
 
 message Err2PeerMsg {
     getamis.alice.crypto.zkproof.paillier.MulStarMessage mulStarProof = 1;
-    getamis.alice.crypto.zkproof.paillier.DecryMessage decryProoof = 2;
-    bytes count = 3;
+    // DecModQ on untranslated C_inner vs PublicX(χ).
+    getamis.alice.crypto.zkproof.paillier.DecryMessage decModQ = 2;
+    bytes productCiphertext = 3;
+    bytes d = 4;
+    bytes f = 5;
+    // DecModQ on K^m vs (σ − r·χ) mod q.
+    getamis.alice.crypto.zkproof.paillier.DecryMessage decModQKm = 6;
 }

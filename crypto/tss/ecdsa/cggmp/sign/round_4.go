@@ -20,6 +20,7 @@ import (
 	"math/big"
 
 	"github.com/getamis/alice/crypto/tss"
+	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 	"github.com/getamis/alice/crypto/utils"
 	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types"
@@ -36,6 +37,8 @@ var (
 
 type round4Data struct {
 	sigma *big.Int
+	// chi is the MtA share used to form σ=k·m+r·χ; required for Scheme A' Err2 verify.
+	chi *big.Int
 }
 
 type round4Handler struct {
@@ -100,11 +103,7 @@ func (p *round4Handler) Finalize(logger log.Logger) (types.Handler, error) {
 	// Verify that (r,s) is a correct signature
 	isCorrectSig := ecdsa.Verify(p.pubKey.ToPubKey(), p.msg, p.R.GetX(), s)
 	if !isCorrectSig {
-		err := p.buildSigmaVerifyFailureMsg()
-		if err != nil {
-			logger.Warn("Failed to buildSigmaVerifyFailureMsg", "err", err)
-		}
-		return nil, errors.New("incorrect sig")
+		return p.enterErr2Phase(logger, ErrIncorrectSig)
 	}
 	p.result = &Result{
 		R: p.R.GetX(),
@@ -114,6 +113,8 @@ func (p *round4Handler) Finalize(logger log.Logger) (types.Handler, error) {
 }
 
 func (p *round4Handler) buildSigmaVerifyFailureMsg() error {
+	curveN := p.pubKey.GetCurve().Params().N
+	p.sigma = new(big.Int).Mod(p.sigma, curveN)
 	// A: Reprove that {Dhatj,i}j ̸=i are well-formed according to prod_ell^aff-g , for l ̸= j,i.
 	for _, peer := range p.peers {
 		ownPed := p.own.para
@@ -122,6 +123,7 @@ func (p *round4Handler) buildSigmaVerifyFailureMsg() error {
 		bkPartialKey := peer.partialPubKey.ScalarMult(peer.bkcoefficient)
 		err := peer.round2Data.psihatProoof.Verify(paillierzkproof.NewS256(), peer.ssidWithBk, p.paillierKey.GetN(), n, p.kCiphertext, peer.round2Data.dhat, peer.round2Data.fhat, ownPed, bkPartialKey)
 		if err != nil {
+			p.round3Handler.blamePeer(peer.Id)
 			return err
 		}
 	}
@@ -130,67 +132,69 @@ func (p *round4Handler) buildSigmaVerifyFailureMsg() error {
 	if err != nil {
 		return err
 	}
-	dciphertext := new(big.Int).Exp(p.kCiphertext, p.bkMulShare, p.paillierKey.GetNSquare())
-	dciphertext.Mul(dciphertext, new(big.Int).Exp(rho, p.paillierKey.GetN(), p.paillierKey.GetNSquare()))
-	dciphertext.Mod(dciphertext, p.paillierKey.GetNSquare())
-
-	decryptPlaintext := new(big.Int).Mul(p.k, new(big.Int).SetBytes(p.msg))
-	rkMulBkShare := new(big.Int).Mul(p.bkMulShare, p.k)
-	decryptPlaintext.Add(decryptPlaintext, rkMulBkShare.Mul(p.R.GetX(), rkMulBkShare))
-
 	nSquare := p.paillierKey.GetNSquare()
-	ciphertext := new(big.Int).Exp(p.kCiphertext, new(big.Int).SetBytes(p.msg), nSquare)
+	dciphertext := new(big.Int).Exp(p.kCiphertext, p.bkMulShare, nSquare)
+	dciphertext.Mul(dciphertext, new(big.Int).Exp(rho, p.paillierKey.GetN(), nSquare))
+	dciphertext.Mod(dciphertext, nSquare)
+
 	innerProductCiphertext := new(big.Int).Set(dciphertext)
-	nthRoot, err := p.paillierKey.GetNthRoot()
-	if err != nil {
-		return err
-	}
 
 	// Compute MulStarProof
 	peersMsg := make(map[string]*Err2PeerMsg, len(p.peers))
 	for _, peer := range p.peers {
 		ped := peer.para
-		// Verify psi and build proofMulStar
 		proofMulStar, err := paillierzkproof.NewMulStarMessage(paillierzkproof.NewS256(), p.own.ssidWithBk, p.bkMulShare, rho, p.paillierKey.GetN(), p.kCiphertext, dciphertext, ped, p.bkpartialPubKey)
 		if err != nil {
 			return err
 		}
-		peersMsg[peer.bk.String(parameter.Curve.Params().N)] = &Err2PeerMsg{
+		entry := &Err2PeerMsg{
 			MulStarProof: proofMulStar,
-			Count:        peer.round1Data.countSigma.Bytes(),
 		}
+		peersMsg[peer.Id] = entry
 
-		// C: Prove in ZK that σi is the plaintext value mod q of the ciphertext obtained as K^m·(Hˆi·Dˆi,j·Fˆj,i)^r according to Πdec, for l ̸= i.
-		temp := new(big.Int).Add(peer.round2Data.alphahat, peer.round1Data.betahat)
-		decryptPlaintext.Add(temp.Mul(temp, p.R.GetX()), decryptPlaintext)
-
-		// compute ciphertext
-		innerProductCiphertext.Mul(p.own.round2Data.dhat, innerProductCiphertext)
-		innerProductCiphertext.Mul(new(big.Int).ModInverse(peer.round2Data.fhat, nSquare), innerProductCiphertext)
+		// D̂_{j,i} under our Paillier; F̂_{i,j} is our enc(β̂) toward peer.
+		innerProductCiphertext.Mul(peer.round2Data.dhat, innerProductCiphertext)
+		innerProductCiphertext.Mul(new(big.Int).ModInverse(peer.round1Data.Fhat, nSquare), innerProductCiphertext)
 		innerProductCiphertext.Mod(innerProductCiphertext, nSquare)
 	}
 
-	// Build ciphertext
-	ciphertext.Mul(ciphertext, new(big.Int).Exp(innerProductCiphertext, p.R.GetX(), nSquare))
-	ciphertext.Mod(ciphertext, nSquare)
-
-	// Build DecryProoof
-	for _, peer := range p.peers {
-		ped := peer.para
-		translateBeta := new(big.Int).Exp(new(big.Int).Add(p.paillierKey.GetN(), big1), new(big.Int).Mul(new(big.Int).Neg(new(big.Int).Mul(p.R.GetX(), peer.round1Data.countSigma)), ped.GetN()), p.paillierKey.GetNSquare())
-		ciphertext.Mul(ciphertext, translateBeta)
-		ciphertext.Mod(ciphertext, nSquare)
-
-		salt := new(big.Int).Exp(new(big.Int).Add(p.paillierKey.GetN(), big1), new(big.Int).Neg(decryptPlaintext), nSquare)
-		salt.Mul(salt, ciphertext)
-		salt.Exp(salt, nthRoot, nSquare)
-
-		proof, err := paillierzkproof.NewDecryMessage(paillierzkproof.NewS256(), p.own.ssidWithBk, decryptPlaintext, salt, p.paillierKey.GetN(), ciphertext, p.sigma, ped)
-		if err != nil {
-			return err
-		}
-		peersMsg[peer.Id].DecryProoof = proof
+	// Err2 Scheme A′: do NOT prove DecModQ on K^m·C_inner^r. That ciphertext decrypts to
+	// k·m + r·(MtA inner product) with r·S ≫ N, so |Y|<8N bounded lift fails (Completeness)
+	// and unbounded lift restores vacuous CRT (Soundness). Split instead:
+	//   (1) DecModQ(C_inner, PublicX(χ))  — binds MtA inner layer to broadcast χ
+	//   (2) DecModQ(K^m, σ−r·χ mod q)   — binds Round4 σ share via σ ≡ r·χ + (σ−r·χ)
+	// Verify recomposes σ ≡ k·m + r·χ (mod q) using local R and Round4 σ.
+	if p.chi == nil {
+		return errors.New("missing chi for err2 dec-mod-q")
 	}
+	if p.msg == nil || p.R == nil {
+		return errors.New("missing msg/R for err2 dec-mod-q")
+	}
+	p.chi = new(big.Int).Mod(p.chi, curveN)
+	finalC := innerProductCiphertext
+	proofX := cggmp.DecModQPublicX(p.chi, curveN, peerPaillierNs(p.peers), peerBetaCounts(p.peers, true))
+	y, salt, err := decModQWitness(p.paillierKey, finalC, proofX, curveN)
+	if err != nil {
+		return err
+	}
+	if err := attachErr2DecModQ(p, y, salt, finalC, proofX, peersMsg); err != nil {
+		return err
+	}
+
+	km := new(big.Int).Exp(p.kCiphertext, new(big.Int).SetBytes(p.msg), nSquare)
+	xKm := new(big.Int).Mul(p.R.GetX(), p.chi)
+	xKm.Sub(p.sigma, xKm)
+	xKm.Mod(xKm, curveN)
+	yKm, saltKm, err := decModQWitness(p.paillierKey, km, xKm, curveN)
+	if err != nil {
+		return err
+	}
+	if err := attachErr2DecModQKm(p, yKm, saltKm, km, xKm, peersMsg); err != nil {
+		return err
+	}
+
+	chiBytes := make([]byte, (curveN.BitLen()+7)/8)
+	p.chi.FillBytes(chiBytes)
 
 	p.err2Msg = &Message{
 		Id:   p.peerManager.SelfID(),
@@ -198,8 +202,8 @@ func (p *round4Handler) buildSigmaVerifyFailureMsg() error {
 		Body: &Message_Err2{
 			Err2: &Err2Msg{
 				KMulBkShareCiphertext: dciphertext.Bytes(),
-				ProductrCiphertext:    ciphertext.Bytes(),
 				Peers:                 peersMsg,
+				Chi:                   chiBytes,
 			},
 		},
 	}

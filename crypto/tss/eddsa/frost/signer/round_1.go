@@ -98,13 +98,25 @@ func newRound1(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, t
 	ownbk := bks[selfId]
 	curve := pubKey.GetCurve()
 	curveN := curve.Params().N
-	bbks := make(birkhoffinterpolation.BkParameters, len(bks))
+	bbks := make(birkhoffinterpolation.BkParameters, 0, len(bks))
+	sgs := make([]*ecpointgrouplaw.ECPoint, 0, len(bks))
 	nodes := make(map[string]*peer, peerManager.NumPeers()+1)
 	i := 0
 	for id, bk := range bks {
-		bbks[i] = bk
+		bbks = append(bbks, bk)
+		sgs = append(sgs, ys[id])
 		nodes[id] = newPeer(id, i, bk, ys[id])
 		i++
+	}
+	if err := bbks.CheckValid(threshold, curveN); err != nil {
+		return nil, err
+	}
+	if err := bbks.ValidatePublicKey(sgs, threshold, pubKey); err != nil {
+		return nil, err
+	}
+	shareG := ecpointgrouplaw.ScalarBaseMult(curve, share)
+	if !shareG.Equal(ys[selfId]) {
+		return nil, errors.New("share does not match partial public key")
 	}
 	coBks, err := bbks.ComputeBkCoefficient(threshold, curveN)
 	if err != nil {
@@ -205,6 +217,12 @@ func (p *round1) HandleMessage(logger log.Logger, message types.Message) error {
 	if err != nil {
 		logger.Debug("Failed ot ToPoint", "err", err)
 		return err
+	}
+	if peer.D.IsIdentity() || peer.E.IsIdentity() {
+		return ErrTrivialPoint
+	}
+	if !peer.D.IsSameCurve(peer.E) {
+		return ecpointgrouplaw.ErrDifferentCurve
 	}
 
 	return peer.AddMessage(msg)

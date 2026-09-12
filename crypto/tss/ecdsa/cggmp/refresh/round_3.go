@@ -98,20 +98,8 @@ func (p *round3Handler) HandleMessage(logger log.Logger, message types.Message) 
 	// verify Feldmann commitment
 	err = commitment.FeldmanVerify(curve, p.ownBK, polyPoint, p.threshold-1, plaintextShareBig)
 	if err != nil {
-		// mu = (cipherShare * (1+n)^(-share))(^1/n) mod n^2.
-		n := ped.GetN()
-		mu := new(big.Int).Add(big1, n)
-		mu.Exp(mu, new(big.Int).Neg(plaintextShareBig), p.paillierKey.GetNSquare())
-		mu.Mul(mu, new(big.Int).SetBytes(round3Msg.Encshare))
-		mu.Mod(mu, p.paillierKey.GetNSquare())
-		// Notice: we have assume that n = pedN
-		mu.Exp(mu, new(big.Int).ModInverse(n, p.ped.GetEulerValue()), p.paillierKey.GetNSquare())
-		errMsg := &AuxiliaryInfoKeyRefeshErrorMessage{
-			Ciphertext: round3Msg.Encshare,
-			Plaintext:  plaintextShare,
-			Mu:         mu.Bytes(),
-		}
-		return errors.New(errMsg.String())
+		logger.Warn("Failed to verify Feldman commitment", "err", err)
+		return errors.New("feldman commitment verification failed")
 	}
 
 	// Establish other partial participant pubKey

@@ -15,7 +15,6 @@
 package signSix
 
 import (
-	"errors"
 	"math/big"
 
 	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
@@ -115,11 +114,7 @@ func (p *round5Handler) Finalize(logger log.Logger) (types.Handler, error) {
 	}
 
 	if !G.ScalarMult(sumdelta).Equal(sumDeltaPoint) {
-		err := p.buildErr1Msg()
-		if err != nil {
-			logger.Warn("Failed to buildErr1Msg", "err", err)
-		}
-		return nil, errors.New("failed verify")
+		return p.enterErr1Phase(logger, ErrInvalidDelta)
 	}
 	p.R = R
 
@@ -279,6 +274,10 @@ func (p *round5Handler) ProcessErr1Msg(msgs []*Message) (map[string]struct{}, er
 
 		for j, m2 := range msgs {
 			if i == j {
+				continue
+			}
+			// Self is already folded in via local (k_i·γ_j − α) above; skip to avoid double-count.
+			if m2.GetId() == p.peerManager.SelfID() {
 				continue
 			}
 			msg2 := m2.GetErr1()

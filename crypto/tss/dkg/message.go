@@ -35,3 +35,21 @@ func (m *Message) IsValid() bool {
 func (m *Message) GetMessageType() types.MessageType {
 	return types.MessageType(m.Type)
 }
+
+func (m *Message) GetEchoMessage() types.Message {
+	mm := &Message{
+		Type: m.Type,
+		Id:   m.Id,
+	}
+	switch m.Type {
+	case Type_Peer:
+		mm.Body = &Message_Peer{
+			Peer: &BodyPeer{
+				Bk:         m.GetPeer().GetBk(),
+				Commitment: m.GetPeer().GetCommitment(),
+			},
+		}
+		return mm
+	}
+	return nil
+}

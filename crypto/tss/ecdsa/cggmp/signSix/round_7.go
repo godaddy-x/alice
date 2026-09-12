@@ -16,7 +16,6 @@ package signSix
 
 import (
 	"crypto/ecdsa"
-	"errors"
 	"math/big"
 
 	"github.com/getamis/alice/crypto/tss"
@@ -92,9 +91,8 @@ func (p *round7Handler) Finalize(logger log.Logger) (types.Handler, error) {
 	}
 	isCorrectSig := ecdsa.Verify(p.pubKey.ToPubKey(), p.msg, p.R.GetX(), s)
 
-	// TODO: Error message collect
 	if !isCorrectSig {
-		return nil, errors.New("failed verified")
+		return p.enterErr2Phase(logger, ErrIncorrectSig)
 	}
 	p.result = &Result{
 		R: p.R.GetX(),

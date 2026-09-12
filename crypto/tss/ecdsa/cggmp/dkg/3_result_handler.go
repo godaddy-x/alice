@@ -15,6 +15,8 @@
 package dkg
 
 import (
+	"errors"
+
 	"github.com/getamis/alice/crypto/birkhoffinterpolation"
 	"github.com/getamis/alice/crypto/ecpointgrouplaw"
 	"github.com/getamis/alice/crypto/tss"
@@ -26,6 +28,8 @@ import (
 type resultData struct {
 	result *ecpointgrouplaw.ECPoint
 }
+
+var ErrSchnorrCommitmentMismatch = errors.New("schnorr commitment mismatch")
 
 type resultHandler struct {
 	*verifyHandler
@@ -70,8 +74,8 @@ func (p *resultHandler) HandleMessage(logger log.Logger, message types.Message) 
 		return err
 	}
 	if !peer.decommit.schnorrAPoint.Equal(alphaHat) {
-		logger.Warn("Failed to verify Schnorr commitment", "err", err)
-		return err
+		logger.Warn("Failed to verify Schnorr commitment")
+		return ErrSchnorrCommitmentMismatch
 	}
 
 	r, err := siGProofMsg.V.ToPoint()

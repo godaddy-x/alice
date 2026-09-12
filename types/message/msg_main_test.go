@@ -59,7 +59,7 @@ var _ = Describe("MsgMain", func() {
 		It("should be ok", func() {
 			mockMsg.On("GetId").Return(msgId).Once()
 			mockHandler.On("MessageType").Return(msgType).Once()
-			mockMsg.On("GetMessageType").Return(msgType).Twice()
+			mockMsg.On("GetMessageType").Return(msgType)
 			mockMsg.On("IsValid").Return(true).Once()
 			err := msgMain.AddMessage(msgId, mockMsg)
 			Expect(err).Should(BeNil())
@@ -84,7 +84,7 @@ var _ = Describe("MsgMain", func() {
 		BeforeEach(func() {
 			mockMsg.On("GetId").Return(msgId).Once()
 			mockHandler.On("MessageType").Return(msgType).Once()
-			mockMsg.On("GetMessageType").Return(msgType).Twice()
+			mockMsg.On("GetMessageType").Return(msgType)
 			mockMsg.On("IsValid").Return(true).Once()
 			err := msgMain.AddMessage(msgId, mockMsg)
 			Expect(err).Should(BeNil())

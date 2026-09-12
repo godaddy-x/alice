@@ -66,7 +66,11 @@ func NewEchoMsgMain(next types.MessageMain, pm types.PeerManager) *EchoMsgMain {
 		logger:      log.New(),
 		pm:          pm,
 		echoMsgs:    msgs,
-		marshalFunc: proto.Marshal,
+		// Deterministic marshal is required when echo payloads contain map fields
+		// (e.g. Err1/Err2 Peers); see protobuf encoding implications for maps.
+		marshalFunc: func(m proto.Message) ([]byte, error) {
+			return proto.MarshalOptions{Deterministic: true}.Marshal(m)
+		},
 	}
 }
 
@@ -127,9 +131,6 @@ func (t *EchoMsgMain) echoHash(m EchoMessage) ([]byte, error) {
 	if echoMsg == nil {
 		return nil, nil
 	}
-	// NOTE: there's an issue if there's a map field in the message
-	// https://developers.google.com/protocol-buffers/docs/encoding#implications
-	// Deterministic serialization only guarantees the same byte output for a particular binary.
 	bs, err := t.marshalFunc(echoMsg.(proto.Message))
 	if err != nil {
 		return nil, err

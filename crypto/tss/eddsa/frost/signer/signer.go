@@ -33,7 +33,7 @@ type Result struct {
 
 type Signer struct {
 	ph *round1
-	*message.MsgMain
+	types.MessageMain
 }
 
 func NewSigner(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, threshold uint32, share *big.Int, dkgResult *dkg.Result, msg []byte, listener types.StateChangedListener) (*Signer, error) {
@@ -43,20 +43,22 @@ func NewSigner(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, t
 		log.Warn("Failed to new a public key handler", "err", err)
 		return nil, err
 	}
+	ms := message.NewMsgMain(peerManager.SelfID(),
+		numPeers,
+		listener,
+		ph,
+		types.MessageType(Type_Round1),
+		types.MessageType(Type_Round2),
+	)
+	msgMainer := message.NewEchoMsgMain(ms, peerManager)
 	return &Signer{
-		ph: ph,
-		MsgMain: message.NewMsgMain(peerManager.SelfID(),
-			numPeers,
-			listener,
-			ph,
-			types.MessageType(Type_Round1),
-			types.MessageType(Type_Round2),
-		),
+		ph:          ph,
+		MessageMain: msgMainer,
 	}, nil
 }
 
 func (s *Signer) Start() {
-	s.MsgMain.Start()
+	s.MessageMain.Start()
 
 	// Send the first message to new peer
 	cggmp.Broadcast(s.ph.peerManager, s.ph.round1Msg)
@@ -79,4 +81,14 @@ func (s *Signer) GetResult() (*Result, error) {
 		R: rh.r,
 		S: new(big.Int).Set(rh.z),
 	}, nil
+}
+
+// GetBlamedPeer returns the peer id identified during Round2 verification failure, if any.
+func (s *Signer) GetBlamedPeer() string {
+	h := s.GetHandler()
+	rh, ok := h.(*round2)
+	if !ok {
+		return ""
+	}
+	return rh.blamedPeer
 }

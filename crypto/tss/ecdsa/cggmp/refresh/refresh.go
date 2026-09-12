@@ -16,6 +16,7 @@ package refresh
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/getamis/alice/crypto/birkhoffinterpolation"
 	ecpointgrouplaw "github.com/getamis/alice/crypto/ecpointgrouplaw"
@@ -29,9 +30,14 @@ import (
 	"github.com/getamis/sirius/log"
 )
 
+// SessionTimeout is the recommended refresh protocol timeout (Round1 commit-reveal).
+// Pass 0 to NewRefreshWithSessionTimeout to disable.
+const SessionTimeout = 15 * time.Minute
+
 type Refresh struct {
 	ph *round1Handler
 	types.MessageMain
+	sessionTimeout time.Duration
 }
 
 type Result struct {
@@ -44,6 +50,10 @@ type Result struct {
 }
 
 func NewRefresh(oldShare *big.Int, pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, threshold uint32, partialPubKey map[string]*ecpointgrouplaw.ECPoint, bks map[string]*birkhoffinterpolation.BkParameter, keySize int, ssid []byte, listener types.StateChangedListener) (*Refresh, error) {
+	return NewRefreshWithSessionTimeout(oldShare, pubKey, peerManager, threshold, partialPubKey, bks, keySize, ssid, 0, listener)
+}
+
+func NewRefreshWithSessionTimeout(oldShare *big.Int, pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, threshold uint32, partialPubKey map[string]*ecpointgrouplaw.ECPoint, bks map[string]*birkhoffinterpolation.BkParameter, keySize int, ssid []byte, sessionTimeout time.Duration, listener types.StateChangedListener) (*Refresh, error) {
 	peerNum := peerManager.NumPeers()
 	ph, err := newRound1Handler(oldShare, pubKey, peerManager, threshold, partialPubKey, bks, keySize, ssid)
 	if err != nil {
@@ -52,8 +62,9 @@ func NewRefresh(oldShare *big.Int, pubKey *ecpointgrouplaw.ECPoint, peerManager 
 	ms := message.NewMsgMain(peerManager.SelfID(), peerNum, listener, ph, types.MessageType(Type_Round1), types.MessageType(Type_Round2), types.MessageType(Type_Round3))
 	msgMainer := message.NewEchoMsgMain(ms, peerManager)
 	return &Refresh{
-		ph:          ph,
-		MessageMain: msgMainer,
+		ph:             ph,
+		MessageMain:    msgMainer,
+		sessionTimeout: sessionTimeout,
 	}, nil
 }
 
@@ -75,7 +86,17 @@ func (d *Refresh) GetResult() (*Result, error) {
 
 func (d *Refresh) Start() {
 	d.MessageMain.Start()
+	if d.sessionTimeout > 0 {
+		go d.watchSessionTimeout()
+	}
 
 	// Send the first message to new peer
 	cggmp.Broadcast(d.ph.peerManager, d.ph.getRound1Message())
+}
+
+func (d *Refresh) watchSessionTimeout() {
+	time.Sleep(d.sessionTimeout)
+	if d.GetState() == types.StateInit {
+		d.MessageMain.Stop()
+	}
 }

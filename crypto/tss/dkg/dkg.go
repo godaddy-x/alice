@@ -30,7 +30,7 @@ import (
 
 type DKG struct {
 	ph *peerHandler
-	*message.MsgMain
+	types.MessageMain
 }
 
 type Result struct {
@@ -49,10 +49,7 @@ func NewDKG(curve elliptic.Curve, peerManager types.PeerManager, threshold uint3
 	if err != nil {
 		return nil, err
 	}
-	return &DKG{
-		ph:      ph,
-		MsgMain: message.NewMsgMain(peerManager.SelfID(), peerNum, listener, ph, types.MessageType(Type_Peer), types.MessageType(Type_Decommit), types.MessageType(Type_Verify), types.MessageType(Type_Result)),
-	}, nil
+	return newDKGWithHandler(peerManager, threshold, rank, listener, ph)
 }
 
 // For testing use
@@ -61,9 +58,11 @@ func newDKGWithHandler(peerManager types.PeerManager, threshold uint32, rank uin
 	if err := ensureRandAndThreshold(rank, threshold, peerNum); err != nil {
 		return nil, err
 	}
+	ms := message.NewMsgMain(peerManager.SelfID(), peerNum, listener, ph, types.MessageType(Type_Peer), types.MessageType(Type_Decommit), types.MessageType(Type_Verify), types.MessageType(Type_Result))
+	msgMainer := message.NewEchoMsgMain(ms, peerManager)
 	return &DKG{
-		ph:      ph,
-		MsgMain: message.NewMsgMain(peerManager.SelfID(), peerNum, listener, ph, types.MessageType(Type_Peer), types.MessageType(Type_Decommit), types.MessageType(Type_Verify), types.MessageType(Type_Result)),
+		ph:          ph,
+		MessageMain: msgMainer,
 	}, nil
 }
 
@@ -113,7 +112,7 @@ func (d *DKG) GetResult() (*Result, error) {
 }
 
 func (d *DKG) Start() {
-	d.MsgMain.Start()
+	d.MessageMain.Start()
 
 	// Send the first message to new peer
 	d.ph.broadcast(d.ph.getPeerMessage())

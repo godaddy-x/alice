@@ -31,3 +31,21 @@ func (m *Message) IsValid() bool {
 func (m *Message) GetMessageType() types.MessageType {
 	return types.MessageType(m.Type)
 }
+
+func (m *Message) GetEchoMessage() types.Message {
+	mm := &Message{
+		Type: m.Type,
+		Id:   m.Id,
+	}
+	switch m.Type {
+	case Type_Round1:
+		mm.Body = &Message_Round1{
+			Round1: &BodyRound1{
+				D: m.GetRound1().GetD(),
+				E: m.GetRound1().GetE(),
+			},
+		}
+		return mm
+	}
+	return nil
+}

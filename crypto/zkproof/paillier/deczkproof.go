@@ -26,6 +26,8 @@ const (
 )
 
 func NewDecryMessage(config *CurveConfig, ssidInfo []byte, y, rho, N0, C, x *big.Int, ped *PederssenOpenParameter) (*DecryMessage, error) {
+	// Deprecated for CGGMP sign identifiable abort: use NewDecModQMessage / VerifyModQ
+	// when the Paillier plaintext may exceed 2^{L+ε} (MtA product). Figure 30: old version.
 	G := pt.NewBase(config.Curve)
 	curveN := config.Curve.Params().N
 	pedN := ped.GetN()

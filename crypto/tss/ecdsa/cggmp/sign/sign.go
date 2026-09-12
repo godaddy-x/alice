@@ -16,11 +16,14 @@ package sign
 
 import (
 	"math/big"
+	"sync"
+	"time"
 
 	"github.com/getamis/alice/crypto/birkhoffinterpolation"
 	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
 	"github.com/getamis/alice/crypto/homo/paillier"
 	"github.com/getamis/alice/crypto/tss"
+	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types"
 	"github.com/getamis/alice/types/message"
@@ -30,6 +33,11 @@ import (
 type Sign struct {
 	ph *round1Handler
 	types.MessageMain
+
+	abortCollector *cggmp.AbortMsgCollector[*Message]
+
+	blamedMu    sync.RWMutex
+	blamedPeers map[string]struct{}
 }
 
 type Result struct {
@@ -39,16 +47,69 @@ type Result struct {
 
 func NewSign(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.ECPoint, partialPubKey map[string]*pt.ECPoint, paillierKey *paillier.Paillier, ped map[string]*paillierzkproof.PederssenOpenParameter, bks map[string]*birkhoffinterpolation.BkParameter, msg []byte, peerManager types.PeerManager, listener types.StateChangedListener) (*Sign, error) {
 	peerNum := peerManager.NumPeers()
+	ssid = cggmp.ComputeSignSSID(ssid, msg)
 	ph, err := newRound1Handler(threshold, ssid, share, pubKey, partialPubKey, paillierKey, ped, bks, msg, peerManager)
 	if err != nil {
 		return nil, err
 	}
-	ms := message.NewMsgMain(peerManager.SelfID(), peerNum, listener, ph, types.MessageType(Type_Round1), types.MessageType(Type_Round2), types.MessageType(Type_Round3), types.MessageType(Type_Round4))
-	msgMainer := message.NewEchoMsgMain(ms, peerManager)
-	return &Sign{
-		ph:          ph,
-		MessageMain: msgMainer,
-	}, nil
+	collector := cggmp.NewAbortMsgCollector[*Message]()
+	ph.onAbortMsg = collector.Record
+	sign := &Sign{
+		ph:             ph,
+		abortCollector: collector,
+	}
+	ph.onBlamedPeers = sign.storeBlamedPeers
+	ms := message.NewMsgMain(peerManager.SelfID(), peerNum, listener, ph,
+		types.MessageType(Type_Round1),
+		types.MessageType(Type_Round2),
+		types.MessageType(Type_Round3),
+		types.MessageType(Type_Round4),
+		types.MessageType(Type_Err1),
+		types.MessageType(Type_Err2),
+	)
+	ms.SetAbortTimeout(2 * time.Minute)
+	sign.MessageMain = cggmp.WrapEchoAbortCollect(ms, peerManager, collector, func(m *Message) bool {
+		return m.Type == Type_Err1 || m.Type == Type_Err2
+	})
+	return sign, nil
+}
+
+func (d *Sign) storeBlamedPeers(peers map[string]struct{}) {
+	d.blamedMu.Lock()
+	defer d.blamedMu.Unlock()
+	d.blamedPeers = peers
+}
+
+// GetBlamedPeers returns peers identified during the in-protocol abort phase.
+// Only valid after StateFailed. Falls back to offline analysis of collected Err messages when needed.
+func (d *Sign) GetBlamedPeers() (map[string]struct{}, error) {
+	if d.GetState() != types.StateFailed {
+		return nil, ErrBlamedPeersNotReady
+	}
+	d.blamedMu.RLock()
+	if d.blamedPeers != nil {
+		out := cggmp.CopyBlamedMap(d.blamedPeers)
+		d.blamedMu.RUnlock()
+		return out, nil
+	}
+	d.blamedMu.RUnlock()
+
+	msgs := d.abortCollector.Snapshot()
+	if len(msgs) == 0 {
+		return map[string]struct{}{}, nil
+	}
+	h := d.GetHandler()
+	switch rh := h.(type) {
+	case *err1Handler:
+		return rh.ProcessErr1Msg(msgs)
+	case *err2Handler:
+		return rh.ProcessErr2Msg(msgs)
+	case *round3Handler:
+		return rh.ProcessErr1Msg(msgs)
+	case *round4Handler:
+		return rh.ProcessErr2Msg(msgs)
+	}
+	return map[string]struct{}{}, nil
 }
 
 // GetResult returns the final result: public key, share, bks (including self bk)

@@ -14,11 +14,9 @@
 package signer
 
 import (
-	"crypto/sha256"
 	"math/big"
 	"testing"
 
-	"github.com/decred/dcrd/dcrec/edwards"
 	"github.com/getamis/alice/crypto/birkhoffinterpolation"
 	"github.com/getamis/alice/crypto/ecpointgrouplaw"
 	"github.com/getamis/alice/crypto/elliptic"
@@ -37,10 +35,6 @@ func TestSigner(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Signer Suite")
 }
-
-var (
-	big2 = big.NewInt(2)
-)
 
 var _ = Describe("Signer", func() {
 	var (
@@ -203,93 +197,5 @@ func newSigners(curve elliptic.Curve, expPublic *ecpointgrouplaw.ECPoint, ss [][
 }
 
 func Verify(pubKey, R *ecpointgrouplaw.ECPoint, message []byte, s *big.Int) bool {
-	curveType := pubKey.GetCurve()
-	switch curveType {
-	case elliptic.Secp256k1():
-		curveP := curveType.Params().P
-		curveN := curveType.Params().N
-		// Let P = lift_x(int(pk))
-		Px, Py, err := liftX(pubKey.GetX(), curveType)
-		if err != nil {
-			return false
-		}
-		// Let r = int(sig[0:32]); fail if r ≥ p.
-		r := new(big.Int).Set(R.GetX())
-		if r.Cmp(curveP) >= 0 {
-			return false
-		}
-		// Let s = int(sig[32:64]); fail if s ≥ n.
-		s := new(big.Int).Set(s)
-		if s.Cmp(curveN) >= 0 {
-			return false
-		}
-		// Let e = int(hashBIP0340/challenge(bytes(r) || bytes(P) || m)) mod n.
-		toHash := utils.Bytes32(r)
-		toHash = append(toHash, utils.Bytes32(Px)...)
-		toHash = append(toHash, message...)
-		e := new(big.Int).SetBytes(hash("BIPSchnorr", toHash))
-		e.Mod(e, curveN)
-		// Let R = s⋅G - e⋅P.
-		RecoverPubKey, err := ecpointgrouplaw.NewECPoint(curveType, Px, Py)
-		if err != nil {
-			return false
-		}
-		R1 := ecpointgrouplaw.ScalarBaseMult(curveType, s)
-		R2 := RecoverPubKey.ScalarMult(e)
-		R2 = R2.Neg()
-		compareR, err := R1.Add(R2)
-		if err != nil {
-			return false
-		}
-		// Fail if is_infinite(R).
-		// Fail if not has_even_y(R).
-		// Fail if x(R) ≠ r
-		if compareR.IsIdentity() || !compareR.IsEvenY() || compareR.GetX().Cmp(r) != 0 {
-			return false
-		}
-		return true
-
-	case elliptic.Ed25519():
-		edwardPubKey := edwards.NewPublicKey(edwards.Edwards(), pubKey.GetX(), pubKey.GetY())
-		test1, err := ecpointEncoding(R)
-		Expect(err).Should(BeNil())
-		test2 := test1
-		r := new(big.Int).SetBytes(utils.ReverseByte(test2[:]))
-		return edwards.Verify(edwardPubKey, message, r, s)
-	}
-	return false
-}
-
-func liftX(x *big.Int, curve elliptic.Curve) (*big.Int, *big.Int, error) {
-	curveP := curve.Params().P
-	if x.Cmp(big0) == -1 || x.Cmp(curveP) == 1 {
-		return nil, nil, ErrNotSupportCurve
-	}
-	compare := new(big.Int)
-	compare.Exp(x, big.NewInt(3), curveP)
-	compare.Add(compare, big.NewInt(7))
-	compare.Mod(compare, curveP)
-	exp := new(big.Int)
-	exp.Add(curveP, big1)
-	exp.Div(exp, big.NewInt(4))
-	y := new(big.Int)
-	y.Exp(compare, exp, curveP)
-	ySquare := new(big.Int)
-	ySquare.Exp(y, big2, curveP)
-	if compare.Cmp(ySquare) != 0 {
-		return nil, nil, ErrNotSupportCurve
-	}
-	if new(big.Int).And(y, big1).Cmp(big1) == 0 {
-		y = y.Sub(curve.Params().P, y)
-	}
-	return x, y, nil
-}
-
-func hash(tag string, x []byte) []byte {
-	tagHash := sha256.Sum256([]byte(tag))
-	toHash := tagHash[:]
-	toHash = append(toHash, tagHash[:]...)
-	toHash = append(toHash, x...)
-	hashed := sha256.Sum256(toHash)
-	return utils.Pad(hashed[:], 32)
+	return verifySignature(pubKey, R, message, s)
 }

@@ -27,6 +27,8 @@ type round2 struct {
 	*round1
 
 	z *big.Int
+
+	blamedPeer string
 }
 
 func newRound2(r *round1) (*round2, error) {
@@ -91,13 +93,17 @@ func (p *round2) Finalize(logger log.Logger) (types.Handler, error) {
 			return nil, err
 		}
 		if !comparePart.Equal(ziG) {
-			logger.Debug("Inconsistent ziG", "comparePart", comparePart, "ziG", ziG)
+			logger.Debug("Inconsistent ziG", "peer", node.Id, "comparePart", comparePart, "ziG", ziG)
+			p.blamedPeer = node.Id
 			return nil, ErrVerifyFailure
 		}
 	}
 	p.z = z.Mod(z, p.curveN)
 	if p.z.Cmp(big0) == 0 {
 		return nil, ErrTrivialSignature
+	}
+	if !verifySignature(p.pubKey, p.r, p.message, p.z) {
+		return nil, ErrVerifyFailure
 	}
 	return nil, nil
 }

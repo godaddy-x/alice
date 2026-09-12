@@ -63,6 +63,7 @@ func (m *Message) GetEchoMessage() types.Message {
 				// Psi:             m.GetRound1().GetPsi(),
 			},
 		}
+		return mm
 	}
 	return nil
 }

@@ -64,6 +64,7 @@ func (m *Message) GetEchoMessage() types.Message {
 				Commitment: m.GetRound1().GetCommitment(),
 			},
 		}
+		return mm
 	}
 	return nil
 }

@@ -81,6 +81,35 @@ var _ = Describe("EchoMsgMain", func() {
 				err := msgMain.AddMessage(msgId, mockMsg)
 				Expect(err).Should(BeNil())
 			})
+
+			It("should reject equivocation with different hash", func() {
+				mockMsg1 := new(mMocks.EchoMessage)
+				mockMsg2 := new(mMocks.EchoMessage)
+				var marshalCalls int
+				msgMain.marshalFunc = func(m proto.Message) ([]byte, error) {
+					marshalCalls++
+					if marshalCalls == 1 {
+						return []byte("echo-a"), nil
+					}
+					return []byte("echo-b"), nil
+				}
+
+				mockMsg1.On("GetMessageType").Return(echoMsgType).Once()
+				mockMsg1.On("GetEchoMessage").Return(mockMsg1).Twice()
+				mockMsg1.On("GetId").Return(msgId).Twice()
+				mockPeerManager.On("PeerIDs").Return([]string{msgId, otherPeerId}).Once()
+				mockPeerManager.On("MustSend", otherPeerId, mockMsg1).Maybe()
+				mockPeerManager.On("NumPeers").Return(uint32(2)).Once()
+
+				err := msgMain.AddMessage(msgId, mockMsg1)
+				Expect(err).Should(BeNil())
+
+				mockMsg2.On("GetMessageType").Return(echoMsgType).Once()
+				mockMsg2.On("GetEchoMessage").Return(mockMsg2).Once()
+				mockMsg2.On("GetId").Return(msgId).Once()
+				err = msgMain.AddMessage(msgId, mockMsg2)
+				Expect(err).Should(Equal(ErrDifferentHash))
+			})
 		})
 	})
 })
