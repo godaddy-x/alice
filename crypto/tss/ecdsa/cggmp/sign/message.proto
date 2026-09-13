@@ -21,35 +21,64 @@ option go_package = "github.com/getamis/alice/crypto/tss/ecdsa/cggmp/sign";
 import "github.com/getamis/alice/crypto/ecpointgrouplaw/point.proto";
 import "github.com/getamis/alice/crypto/zkproof/paillier/message.proto";
 
+// Type values must increase with protocol order (MsgMain rejects older types).
 enum Type {
-    Round1 = 0;
-    Round2 = 1;
-    Round3 = 2;
-    Round4 = 3;
-
-    Err1 = 4;
-    Err2 = 5;
+    Round1Digest = 0;
+    Round1       = 1;
+    Round2Digest = 2;
+    Round2       = 3;
+    Round3Digest = 4;
+    Round3       = 5;
+    Round4       = 6;
+    Err1         = 7;
+    Err2         = 8;
 }
 
 message Message {
     Type type = 1;
     string id = 2;
     oneof body {
+        Round1DigestMsg round1Digest = 10;
         Round1Msg round1 = 4;
+        Round2DigestMsg round2Digest = 11;
         Round2Msg round2 = 5;
+        Round3DigestMsg round3Digest = 12;
         Round3Msg round3 = 6;
         Round4Msg round4 = 7;
-
-        // Error message
         Err1Msg err1 = 8;
-        Err2Msg err2 = 9;        
+        Err2Msg err2 = 9;
     }
+}
+
+message PeerDigestEntry {
+    string peer_id = 1;
+    bytes digest = 2; // exactly 32 bytes (blake2b-256)
+}
+
+message Round1DigestMsg {
+    bytes k_ciphertext = 1;
+    bytes gamma_ciphertext = 2;
+    repeated PeerDigestEntry to_peer = 3;
+    bytes table_root = 4;
+}
+
+message Round2DigestMsg {
+    ecpointgrouplaw.EcPointMessage gamma = 1;
+    repeated PeerDigestEntry to_peer = 2;
+    bytes table_root = 3;
+}
+
+message Round3DigestMsg {
+    string delta = 1;
+    ecpointgrouplaw.EcPointMessage big_delta = 2;
+    repeated PeerDigestEntry to_peer = 3;
+    bytes table_root = 4;
 }
 
 message Round1Msg {
     bytes kCiphertext = 1;
     bytes gammaCiphertext = 2;
-    getamis.alice.crypto.zkproof.paillier.EncryptRangeMessage psi = 3; 
+    getamis.alice.crypto.zkproof.paillier.EncryptRangeMessage psi = 3;
 }
 
 message Round2Msg {
@@ -81,28 +110,22 @@ message Err1Msg {
 
 message Err1PeerMsg {
     getamis.alice.crypto.zkproof.paillier.DecryMessage decModQ = 1;
-    // Untranslated MtA product C0; DecModQ uses PublicX(δ)=(δ+Σc·N) mod q.
     bytes productCiphertext = 2;
-    // D_{peer→prover} (under prover Paillier) used in the product.
     bytes d = 3;
-    // F_{prover→peer} (under prover Paillier) used in the product.
     bytes f = 4;
 }
 
 message Err2Msg {
     bytes kMulBkShareCiphertext = 1;
     map<string, Err2PeerMsg> peers = 2;
-    // χ_i for Scheme A' (PublicX(χ) and σ−r·χ).
     bytes chi = 3;
 }
 
 message Err2PeerMsg {
     getamis.alice.crypto.zkproof.paillier.MulStarMessage mulStarProof = 1;
-    // DecModQ on untranslated C_inner vs PublicX(χ).
     getamis.alice.crypto.zkproof.paillier.DecryMessage decModQ = 2;
     bytes productCiphertext = 3;
     bytes d = 4;
     bytes f = 5;
-    // DecModQ on K^m vs (σ − r·χ) mod q.
     getamis.alice.crypto.zkproof.paillier.DecryMessage decModQKm = 6;
 }

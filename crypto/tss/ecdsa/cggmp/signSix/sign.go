@@ -68,6 +68,8 @@ func NewSign(threshold uint32, ssid []byte, share *big.Int, ySecret *big.Int, pu
 	ms.SetAbortTimeout(2 * time.Minute)
 	sign.MessageMain = cggmp.WrapEchoAbortCollect(ms, peerManager, collector, func(m *Message) bool {
 		return m.Type == Type_Err1 || m.Type == Type_Err2
+	}, func(authorID string) {
+		sign.storeBlamedPeers(map[string]struct{}{authorID: {}})
 	})
 	return sign, nil
 }
@@ -75,7 +77,13 @@ func NewSign(threshold uint32, ssid []byte, share *big.Int, ySecret *big.Int, pu
 func (d *Sign) storeBlamedPeers(peers map[string]struct{}) {
 	d.blamedMu.Lock()
 	defer d.blamedMu.Unlock()
-	d.blamedPeers = peers
+	if d.blamedPeers == nil {
+		d.blamedPeers = cggmp.CopyBlamedMap(peers)
+		return
+	}
+	for id := range peers {
+		d.blamedPeers[id] = struct{}{}
+	}
 }
 
 // GetBlamedPeers returns peers identified during the in-protocol abort phase.

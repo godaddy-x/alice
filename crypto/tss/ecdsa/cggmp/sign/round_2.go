@@ -81,7 +81,18 @@ func (p *round2Handler) HandleMessage(logger log.Logger, message types.Message) 
 	Gamma, err := round2.Gamma.ToPoint()
 	if err != nil {
 		logger.Debug("Failed to Gamma.ToPoint", "err", err)
+		p.blameSender(id)
 		return err
+	}
+	selfID := p.peerManager.SelfID()
+	if err := p.gateEdgeDigest(digestR2, id, selfID, func() ([]byte, error) {
+		return Round2PairwiseDigest(p.ssid, id, selfID, round2)
+	}); err != nil {
+		return err
+	}
+	if peer.digestGamma == nil || !peer.digestGamma.Equal(Gamma) {
+		p.blameSender(id)
+		return ErrPairwiseDigestMismatch
 	}
 
 	ownPed := p.own.para
@@ -90,6 +101,7 @@ func (p *round2Handler) HandleMessage(logger log.Logger, message types.Message) 
 	err = round2.Psi.Verify(parameter, peer.ssidWithBk, p.paillierKey.GetN(), n, p.kCiphertext, new(big.Int).SetBytes(round2.D), new(big.Int).SetBytes(round2.F), ownPed, Gamma)
 	if err != nil {
 		logger.Debug("Failed to verify", "err", err)
+		p.blameSender(id)
 		return err
 	}
 	// Verify phiHat
@@ -97,6 +109,7 @@ func (p *round2Handler) HandleMessage(logger log.Logger, message types.Message) 
 	err = round2.Psihat.Verify(parameter, peer.ssidWithBk, p.paillierKey.GetN(), n, p.kCiphertext, new(big.Int).SetBytes(round2.Dhat), new(big.Int).SetBytes(round2.Fhat), ownPed, bkPartialKey)
 	if err != nil {
 		logger.Debug("Failed to verify", "err", err)
+		p.blameSender(id)
 		return err
 	}
 	// Verify phipai
@@ -105,6 +118,7 @@ func (p *round2Handler) HandleMessage(logger log.Logger, message types.Message) 
 	err = round2.Psipai.Verify(parameter, peer.ssidWithBk, peer.round1Data.gammaCiphertext, n, ownPed, Gamma, G)
 	if err != nil {
 		logger.Debug("Failed to verify", "err", err)
+		p.blameSender(id)
 		return err
 	}
 
@@ -169,8 +183,8 @@ func (p *round2Handler) Finalize(logger log.Logger) (types.Handler, error) {
 		logger.Debug("Failed to ToEcPointMessage", "err", err)
 		return nil, err
 	}
-	for id, peer := range p.peers {
-		logger = logger.New("peerId", id)
+	pending := make(map[string]*Message, len(p.peers))
+	for _, peer := range p.peers {
 		peerPed := peer.para
 		// Compute proof phi''
 		psidoublepaiProof, err := paillierzkproof.NewKnowExponentAndPaillierEncryption(parameter, p.own.ssidWithBk, p.k, p.rho, p.kCiphertext, p.own.para.GetN(), peerPed, Delta, sumGamma)
@@ -178,7 +192,7 @@ func (p *round2Handler) Finalize(logger log.Logger) (types.Handler, error) {
 			logger.Debug("Failed to NewKnowExponentAndPaillierEncryption", "err", err)
 			return nil, err
 		}
-		p.peerManager.MustSend(id, &Message{
+		pending[peer.Id] = &Message{
 			Id:   p.own.Id,
 			Type: Type_Round3,
 			Body: &Message_Round3{
@@ -188,7 +202,10 @@ func (p *round2Handler) Finalize(logger log.Logger) (types.Handler, error) {
 					Psidoublepai: psidoublepaiProof,
 				},
 			},
-		})
+		}
 	}
-	return newRound3Handler(p)
+	if err := p.buildRound3DigestAndBroadcast(delta, MsgDelta, pending); err != nil {
+		return nil, err
+	}
+	return newRound3DigestHandler(p, pending, delta.String(), MsgDelta), nil
 }

@@ -1,17 +1,5 @@
 // Copyright © 2022 AMIS Technologies
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package sign
 
 import (
@@ -20,10 +8,16 @@ import (
 
 func (m *Message) IsValid() bool {
 	switch m.Type {
+	case Type_Round1Digest:
+		return m.GetRound1Digest() != nil
 	case Type_Round1:
 		return m.GetRound1() != nil
+	case Type_Round2Digest:
+		return m.GetRound2Digest() != nil
 	case Type_Round2:
 		return m.GetRound2() != nil
+	case Type_Round3Digest:
+		return m.GetRound3Digest() != nil
 	case Type_Round3:
 		return m.GetRound3() != nil
 	case Type_Round4:
@@ -46,41 +40,57 @@ func (m *Message) GetEchoMessage() types.Message {
 		Id:   m.Id,
 	}
 	switch m.Type {
+	case Type_Round1Digest:
+		src := m.GetRound1Digest()
+		if src == nil {
+			return nil
+		}
+		mm.Body = &Message_Round1Digest{
+			Round1Digest: &Round1DigestMsg{
+				KCiphertext:     cloneBytes(src.GetKCiphertext()),
+				GammaCiphertext: cloneBytes(src.GetGammaCiphertext()),
+				ToPeer:          clonePeerDigests(src.GetToPeer()),
+				TableRoot:       cloneBytes(src.GetTableRoot()),
+			},
+		}
+		return mm
 	case Type_Round1:
-		mm.Body = &Message_Round1{
-			Round1: &Round1Msg{
-				KCiphertext:     m.GetRound1().GetKCiphertext(),
-				GammaCiphertext: m.GetRound1().GetGammaCiphertext(),
-				// Not broadcast to all in echo protocol
-				// Psi:             m.GetRound1().GetPsi(),
+		// K/Γ already echoed via Round1Digest; pairwise psi is digest-gated.
+		// Returning nil skips EchoMsgMain so reveal is delivered directly.
+		return nil
+	case Type_Round2Digest:
+		src := m.GetRound2Digest()
+		if src == nil {
+			return nil
+		}
+		mm.Body = &Message_Round2Digest{
+			Round2Digest: &Round2DigestMsg{
+				Gamma:     cloneEcPointMsg(src.GetGamma()),
+				ToPeer:    clonePeerDigests(src.GetToPeer()),
+				TableRoot: cloneBytes(src.GetTableRoot()),
 			},
 		}
 		return mm
 	case Type_Round2:
-		src := m.GetRound2()
+		// Pairwise reveal — Gamma already in Round2Digest; skip per-message Echo.
+		return nil
+	case Type_Round3Digest:
+		src := m.GetRound3Digest()
 		if src == nil {
 			return nil
 		}
-		// Pairwise D/F differ per recipient; Γ_i must be consistent (global broadcast component).
-		mm.Body = &Message_Round2{
-			Round2: &Round2Msg{
-				Gamma: cloneEcPointMsg(src.GetGamma()),
+		mm.Body = &Message_Round3Digest{
+			Round3Digest: &Round3DigestMsg{
+				Delta:     src.GetDelta(),
+				BigDelta:  cloneEcPointMsg(src.GetBigDelta()),
+				ToPeer:    clonePeerDigests(src.GetToPeer()),
+				TableRoot: cloneBytes(src.GetTableRoot()),
 			},
 		}
 		return mm
 	case Type_Round3:
-		src := m.GetRound3()
-		if src == nil {
-			return nil
-		}
-		// psidoublepai is pairwise; echo only δ and BigDelta (must match across recipients).
-		mm.Body = &Message_Round3{
-			Round3: &Round3Msg{
-				Delta:    src.GetDelta(),
-				BigDelta: cloneEcPointMsg(src.GetBigDelta()),
-			},
-		}
-		return mm
+		// Pairwise reveal — δ/Δ already in Round3Digest; skip per-message Echo.
+		return nil
 	case Type_Round4:
 		src := m.GetRound4()
 		if src == nil {
@@ -120,6 +130,23 @@ func (m *Message) GetEchoMessage() types.Message {
 		return mm
 	}
 	return nil
+}
+
+func clonePeerDigests(in []*PeerDigestEntry) []*PeerDigestEntry {
+	if in == nil {
+		return nil
+	}
+	out := make([]*PeerDigestEntry, len(in))
+	for i, e := range in {
+		if e == nil {
+			continue
+		}
+		out[i] = &PeerDigestEntry{
+			PeerId: e.GetPeerId(),
+			Digest: cloneBytes(e.GetDigest()),
+		}
+	}
+	return out
 }
 
 func cloneErr1Peers(in map[string]*Err1PeerMsg) map[string]*Err1PeerMsg {

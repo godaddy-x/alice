@@ -31,7 +31,9 @@ import (
 )
 
 type Sign struct {
-	ph *round1Handler
+	ph  *round1Handler
+	r1d *round1DigestHandler
+	ms  *message.MsgMain
 	types.MessageMain
 
 	abortCollector *cggmp.AbortMsgCollector[*Message]
@@ -54,30 +56,51 @@ func NewSign(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.ECPoint, 
 	}
 	collector := cggmp.NewAbortMsgCollector[*Message]()
 	ph.onAbortMsg = collector.Record
+	r1d := newRound1DigestHandler(ph)
 	sign := &Sign{
 		ph:             ph,
 		abortCollector: collector,
 	}
 	ph.onBlamedPeers = sign.storeBlamedPeers
-	ms := message.NewMsgMain(peerManager.SelfID(), peerNum, listener, ph,
+	ms := message.NewMsgMain(peerManager.SelfID(), peerNum, listener, r1d,
+		types.MessageType(Type_Round1Digest),
 		types.MessageType(Type_Round1),
+		types.MessageType(Type_Round2Digest),
 		types.MessageType(Type_Round2),
+		types.MessageType(Type_Round3Digest),
 		types.MessageType(Type_Round3),
 		types.MessageType(Type_Round4),
 		types.MessageType(Type_Err1),
 		types.MessageType(Type_Err2),
 	)
 	ms.SetAbortTimeout(2 * time.Minute)
+	sign.ms = ms
 	sign.MessageMain = cggmp.WrapEchoAbortCollect(ms, peerManager, collector, func(m *Message) bool {
 		return m.Type == Type_Err1 || m.Type == Type_Err2
+	}, func(authorID string) {
+		sign.storeBlamedPeers(map[string]struct{}{authorID: {}})
 	})
+	sign.r1d = r1d
 	return sign, nil
 }
 
 func (d *Sign) storeBlamedPeers(peers map[string]struct{}) {
 	d.blamedMu.Lock()
 	defer d.blamedMu.Unlock()
-	d.blamedPeers = peers
+	if d.blamedPeers == nil {
+		d.blamedPeers = cggmp.CopyBlamedMap(peers)
+		return
+	}
+	for id := range peers {
+		d.blamedPeers[id] = struct{}{}
+	}
+}
+
+// SetAbortTimeout configures digest-barrier and abort-collection timeouts on the inner MsgMain.
+func (d *Sign) SetAbortTimeout(dur time.Duration) {
+	if d.ms != nil {
+		d.ms.SetAbortTimeout(dur)
+	}
 }
 
 // GetBlamedPeers returns peers identified during the in-protocol abort phase.
@@ -129,7 +152,13 @@ func (d *Sign) GetResult() (*Result, error) {
 }
 
 func (d *Sign) Start() {
+	if err := d.r1d.prepareRound1Digest(); err != nil {
+		log.Warn("Failed to prepare Round1Digest", "err", err)
+		if d.ms != nil {
+			_ = d.ms.Fail()
+		}
+		return
+	}
 	d.MessageMain.Start()
-
-	d.ph.sendRound1Messages()
+	d.r1d.broadcastRound1Digest()
 }

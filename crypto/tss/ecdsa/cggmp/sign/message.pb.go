@@ -16,7 +16,7 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        v3.20.3
-// source: github.com/getamis/alice/crypto/tss/ecdsa/cggmp/sign/message.proto
+// source: crypto/tss/ecdsa/cggmp/sign/message.proto
 
 package sign
 
@@ -37,34 +37,44 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Type values must increase with protocol order (MsgMain rejects older types).
 type Type int32
 
 const (
-	Type_Round1 Type = 0
-	Type_Round2 Type = 1
-	Type_Round3 Type = 2
-	Type_Round4 Type = 3
-	Type_Err1   Type = 4
-	Type_Err2   Type = 5
+	Type_Round1Digest Type = 0
+	Type_Round1       Type = 1
+	Type_Round2Digest Type = 2
+	Type_Round2       Type = 3
+	Type_Round3Digest Type = 4
+	Type_Round3       Type = 5
+	Type_Round4       Type = 6
+	Type_Err1         Type = 7
+	Type_Err2         Type = 8
 )
 
 // Enum value maps for Type.
 var (
 	Type_name = map[int32]string{
-		0: "Round1",
-		1: "Round2",
-		2: "Round3",
-		3: "Round4",
-		4: "Err1",
-		5: "Err2",
+		0: "Round1Digest",
+		1: "Round1",
+		2: "Round2Digest",
+		3: "Round2",
+		4: "Round3Digest",
+		5: "Round3",
+		6: "Round4",
+		7: "Err1",
+		8: "Err2",
 	}
 	Type_value = map[string]int32{
-		"Round1": 0,
-		"Round2": 1,
-		"Round3": 2,
-		"Round4": 3,
-		"Err1":   4,
-		"Err2":   5,
+		"Round1Digest": 0,
+		"Round1":       1,
+		"Round2Digest": 2,
+		"Round2":       3,
+		"Round3Digest": 4,
+		"Round3":       5,
+		"Round4":       6,
+		"Err1":         7,
+		"Err2":         8,
 	}
 )
 
@@ -79,11 +89,11 @@ func (x Type) String() string {
 }
 
 func (Type) Descriptor() protoreflect.EnumDescriptor {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_enumTypes[0].Descriptor()
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_enumTypes[0].Descriptor()
 }
 
 func (Type) Type() protoreflect.EnumType {
-	return &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_enumTypes[0]
+	return &file_crypto_tss_ecdsa_cggmp_sign_message_proto_enumTypes[0]
 }
 
 func (x Type) Number() protoreflect.EnumNumber {
@@ -92,7 +102,7 @@ func (x Type) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Type.Descriptor instead.
 func (Type) EnumDescriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{0}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{0}
 }
 
 type Message struct {
@@ -101,8 +111,11 @@ type Message struct {
 	Id    string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 	// Types that are valid to be assigned to Body:
 	//
+	//	*Message_Round1Digest
 	//	*Message_Round1
+	//	*Message_Round2Digest
 	//	*Message_Round2
+	//	*Message_Round3Digest
 	//	*Message_Round3
 	//	*Message_Round4
 	//	*Message_Err1
@@ -114,7 +127,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[0]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -126,7 +139,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[0]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -139,14 +152,14 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{0}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Message) GetType() Type {
 	if x != nil {
 		return x.Type
 	}
-	return Type_Round1
+	return Type_Round1Digest
 }
 
 func (x *Message) GetId() string {
@@ -163,6 +176,15 @@ func (x *Message) GetBody() isMessage_Body {
 	return nil
 }
 
+func (x *Message) GetRound1Digest() *Round1DigestMsg {
+	if x != nil {
+		if x, ok := x.Body.(*Message_Round1Digest); ok {
+			return x.Round1Digest
+		}
+	}
+	return nil
+}
+
 func (x *Message) GetRound1() *Round1Msg {
 	if x != nil {
 		if x, ok := x.Body.(*Message_Round1); ok {
@@ -172,10 +194,28 @@ func (x *Message) GetRound1() *Round1Msg {
 	return nil
 }
 
+func (x *Message) GetRound2Digest() *Round2DigestMsg {
+	if x != nil {
+		if x, ok := x.Body.(*Message_Round2Digest); ok {
+			return x.Round2Digest
+		}
+	}
+	return nil
+}
+
 func (x *Message) GetRound2() *Round2Msg {
 	if x != nil {
 		if x, ok := x.Body.(*Message_Round2); ok {
 			return x.Round2
+		}
+	}
+	return nil
+}
+
+func (x *Message) GetRound3Digest() *Round3DigestMsg {
+	if x != nil {
+		if x, ok := x.Body.(*Message_Round3Digest); ok {
+			return x.Round3Digest
 		}
 	}
 	return nil
@@ -221,12 +261,24 @@ type isMessage_Body interface {
 	isMessage_Body()
 }
 
+type Message_Round1Digest struct {
+	Round1Digest *Round1DigestMsg `protobuf:"bytes,10,opt,name=round1Digest,proto3,oneof"`
+}
+
 type Message_Round1 struct {
 	Round1 *Round1Msg `protobuf:"bytes,4,opt,name=round1,proto3,oneof"`
 }
 
+type Message_Round2Digest struct {
+	Round2Digest *Round2DigestMsg `protobuf:"bytes,11,opt,name=round2Digest,proto3,oneof"`
+}
+
 type Message_Round2 struct {
 	Round2 *Round2Msg `protobuf:"bytes,5,opt,name=round2,proto3,oneof"`
+}
+
+type Message_Round3Digest struct {
+	Round3Digest *Round3DigestMsg `protobuf:"bytes,12,opt,name=round3Digest,proto3,oneof"`
 }
 
 type Message_Round3 struct {
@@ -238,7 +290,6 @@ type Message_Round4 struct {
 }
 
 type Message_Err1 struct {
-	// Error message
 	Err1 *Err1Msg `protobuf:"bytes,8,opt,name=err1,proto3,oneof"`
 }
 
@@ -246,9 +297,15 @@ type Message_Err2 struct {
 	Err2 *Err2Msg `protobuf:"bytes,9,opt,name=err2,proto3,oneof"`
 }
 
+func (*Message_Round1Digest) isMessage_Body() {}
+
 func (*Message_Round1) isMessage_Body() {}
 
+func (*Message_Round2Digest) isMessage_Body() {}
+
 func (*Message_Round2) isMessage_Body() {}
+
+func (*Message_Round3Digest) isMessage_Body() {}
 
 func (*Message_Round3) isMessage_Body() {}
 
@@ -257,6 +314,254 @@ func (*Message_Round4) isMessage_Body() {}
 func (*Message_Err1) isMessage_Body() {}
 
 func (*Message_Err2) isMessage_Body() {}
+
+type PeerDigestEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PeerId        string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
+	Digest        []byte                 `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"` // exactly 32 bytes (blake2b-256)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PeerDigestEntry) Reset() {
+	*x = PeerDigestEntry{}
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PeerDigestEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PeerDigestEntry) ProtoMessage() {}
+
+func (x *PeerDigestEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PeerDigestEntry.ProtoReflect.Descriptor instead.
+func (*PeerDigestEntry) Descriptor() ([]byte, []int) {
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PeerDigestEntry) GetPeerId() string {
+	if x != nil {
+		return x.PeerId
+	}
+	return ""
+}
+
+func (x *PeerDigestEntry) GetDigest() []byte {
+	if x != nil {
+		return x.Digest
+	}
+	return nil
+}
+
+type Round1DigestMsg struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	KCiphertext     []byte                 `protobuf:"bytes,1,opt,name=k_ciphertext,json=kCiphertext,proto3" json:"k_ciphertext,omitempty"`
+	GammaCiphertext []byte                 `protobuf:"bytes,2,opt,name=gamma_ciphertext,json=gammaCiphertext,proto3" json:"gamma_ciphertext,omitempty"`
+	ToPeer          []*PeerDigestEntry     `protobuf:"bytes,3,rep,name=to_peer,json=toPeer,proto3" json:"to_peer,omitempty"`
+	TableRoot       []byte                 `protobuf:"bytes,4,opt,name=table_root,json=tableRoot,proto3" json:"table_root,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *Round1DigestMsg) Reset() {
+	*x = Round1DigestMsg{}
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Round1DigestMsg) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Round1DigestMsg) ProtoMessage() {}
+
+func (x *Round1DigestMsg) ProtoReflect() protoreflect.Message {
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Round1DigestMsg.ProtoReflect.Descriptor instead.
+func (*Round1DigestMsg) Descriptor() ([]byte, []int) {
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Round1DigestMsg) GetKCiphertext() []byte {
+	if x != nil {
+		return x.KCiphertext
+	}
+	return nil
+}
+
+func (x *Round1DigestMsg) GetGammaCiphertext() []byte {
+	if x != nil {
+		return x.GammaCiphertext
+	}
+	return nil
+}
+
+func (x *Round1DigestMsg) GetToPeer() []*PeerDigestEntry {
+	if x != nil {
+		return x.ToPeer
+	}
+	return nil
+}
+
+func (x *Round1DigestMsg) GetTableRoot() []byte {
+	if x != nil {
+		return x.TableRoot
+	}
+	return nil
+}
+
+type Round2DigestMsg struct {
+	state         protoimpl.MessageState          `protogen:"open.v1"`
+	Gamma         *ecpointgrouplaw.EcPointMessage `protobuf:"bytes,1,opt,name=gamma,proto3" json:"gamma,omitempty"`
+	ToPeer        []*PeerDigestEntry              `protobuf:"bytes,2,rep,name=to_peer,json=toPeer,proto3" json:"to_peer,omitempty"`
+	TableRoot     []byte                          `protobuf:"bytes,3,opt,name=table_root,json=tableRoot,proto3" json:"table_root,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Round2DigestMsg) Reset() {
+	*x = Round2DigestMsg{}
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Round2DigestMsg) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Round2DigestMsg) ProtoMessage() {}
+
+func (x *Round2DigestMsg) ProtoReflect() protoreflect.Message {
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Round2DigestMsg.ProtoReflect.Descriptor instead.
+func (*Round2DigestMsg) Descriptor() ([]byte, []int) {
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Round2DigestMsg) GetGamma() *ecpointgrouplaw.EcPointMessage {
+	if x != nil {
+		return x.Gamma
+	}
+	return nil
+}
+
+func (x *Round2DigestMsg) GetToPeer() []*PeerDigestEntry {
+	if x != nil {
+		return x.ToPeer
+	}
+	return nil
+}
+
+func (x *Round2DigestMsg) GetTableRoot() []byte {
+	if x != nil {
+		return x.TableRoot
+	}
+	return nil
+}
+
+type Round3DigestMsg struct {
+	state         protoimpl.MessageState          `protogen:"open.v1"`
+	Delta         string                          `protobuf:"bytes,1,opt,name=delta,proto3" json:"delta,omitempty"`
+	BigDelta      *ecpointgrouplaw.EcPointMessage `protobuf:"bytes,2,opt,name=big_delta,json=bigDelta,proto3" json:"big_delta,omitempty"`
+	ToPeer        []*PeerDigestEntry              `protobuf:"bytes,3,rep,name=to_peer,json=toPeer,proto3" json:"to_peer,omitempty"`
+	TableRoot     []byte                          `protobuf:"bytes,4,opt,name=table_root,json=tableRoot,proto3" json:"table_root,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Round3DigestMsg) Reset() {
+	*x = Round3DigestMsg{}
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Round3DigestMsg) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Round3DigestMsg) ProtoMessage() {}
+
+func (x *Round3DigestMsg) ProtoReflect() protoreflect.Message {
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Round3DigestMsg.ProtoReflect.Descriptor instead.
+func (*Round3DigestMsg) Descriptor() ([]byte, []int) {
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Round3DigestMsg) GetDelta() string {
+	if x != nil {
+		return x.Delta
+	}
+	return ""
+}
+
+func (x *Round3DigestMsg) GetBigDelta() *ecpointgrouplaw.EcPointMessage {
+	if x != nil {
+		return x.BigDelta
+	}
+	return nil
+}
+
+func (x *Round3DigestMsg) GetToPeer() []*PeerDigestEntry {
+	if x != nil {
+		return x.ToPeer
+	}
+	return nil
+}
+
+func (x *Round3DigestMsg) GetTableRoot() []byte {
+	if x != nil {
+		return x.TableRoot
+	}
+	return nil
+}
 
 type Round1Msg struct {
 	state           protoimpl.MessageState        `protogen:"open.v1"`
@@ -269,7 +574,7 @@ type Round1Msg struct {
 
 func (x *Round1Msg) Reset() {
 	*x = Round1Msg{}
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[1]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -281,7 +586,7 @@ func (x *Round1Msg) String() string {
 func (*Round1Msg) ProtoMessage() {}
 
 func (x *Round1Msg) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[1]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -294,7 +599,7 @@ func (x *Round1Msg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Round1Msg.ProtoReflect.Descriptor instead.
 func (*Round1Msg) Descriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{1}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Round1Msg) GetKCiphertext() []byte {
@@ -334,7 +639,7 @@ type Round2Msg struct {
 
 func (x *Round2Msg) Reset() {
 	*x = Round2Msg{}
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[2]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -346,7 +651,7 @@ func (x *Round2Msg) String() string {
 func (*Round2Msg) ProtoMessage() {}
 
 func (x *Round2Msg) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[2]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -359,7 +664,7 @@ func (x *Round2Msg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Round2Msg.ProtoReflect.Descriptor instead.
 func (*Round2Msg) Descriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{2}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Round2Msg) GetD() []byte {
@@ -429,7 +734,7 @@ type Round3Msg struct {
 
 func (x *Round3Msg) Reset() {
 	*x = Round3Msg{}
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[3]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -441,7 +746,7 @@ func (x *Round3Msg) String() string {
 func (*Round3Msg) ProtoMessage() {}
 
 func (x *Round3Msg) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[3]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -454,7 +759,7 @@ func (x *Round3Msg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Round3Msg.ProtoReflect.Descriptor instead.
 func (*Round3Msg) Descriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{3}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Round3Msg) GetDelta() string {
@@ -487,7 +792,7 @@ type Round4Msg struct {
 
 func (x *Round4Msg) Reset() {
 	*x = Round4Msg{}
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[4]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -499,7 +804,7 @@ func (x *Round4Msg) String() string {
 func (*Round4Msg) ProtoMessage() {}
 
 func (x *Round4Msg) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[4]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -512,7 +817,7 @@ func (x *Round4Msg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Round4Msg.ProtoReflect.Descriptor instead.
 func (*Round4Msg) Descriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{4}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Round4Msg) GetSigmai() []byte {
@@ -533,7 +838,7 @@ type Err1Msg struct {
 
 func (x *Err1Msg) Reset() {
 	*x = Err1Msg{}
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[5]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -545,7 +850,7 @@ func (x *Err1Msg) String() string {
 func (*Err1Msg) ProtoMessage() {}
 
 func (x *Err1Msg) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[5]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -558,7 +863,7 @@ func (x *Err1Msg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Err1Msg.ProtoReflect.Descriptor instead.
 func (*Err1Msg) Descriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{5}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Err1Msg) GetKgammaCiphertext() []byte {
@@ -583,21 +888,18 @@ func (x *Err1Msg) GetPeers() map[string]*Err1PeerMsg {
 }
 
 type Err1PeerMsg struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	DecModQ *paillier.DecryMessage `protobuf:"bytes,1,opt,name=decModQ,proto3" json:"decModQ,omitempty"`
-	// Untranslated MtA product C0; DecModQ uses PublicX(δ)=(δ+Σc·N) mod q.
-	ProductCiphertext []byte `protobuf:"bytes,2,opt,name=productCiphertext,proto3" json:"productCiphertext,omitempty"`
-	// D_{peer→prover} (under prover Paillier) used in the product.
-	D []byte `protobuf:"bytes,3,opt,name=d,proto3" json:"d,omitempty"`
-	// F_{prover→peer} (under prover Paillier) used in the product.
-	F             []byte `protobuf:"bytes,4,opt,name=f,proto3" json:"f,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	DecModQ           *paillier.DecryMessage `protobuf:"bytes,1,opt,name=decModQ,proto3" json:"decModQ,omitempty"`
+	ProductCiphertext []byte                 `protobuf:"bytes,2,opt,name=productCiphertext,proto3" json:"productCiphertext,omitempty"`
+	D                 []byte                 `protobuf:"bytes,3,opt,name=d,proto3" json:"d,omitempty"`
+	F                 []byte                 `protobuf:"bytes,4,opt,name=f,proto3" json:"f,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Err1PeerMsg) Reset() {
 	*x = Err1PeerMsg{}
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[6]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -609,7 +911,7 @@ func (x *Err1PeerMsg) String() string {
 func (*Err1PeerMsg) ProtoMessage() {}
 
 func (x *Err1PeerMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[6]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -622,7 +924,7 @@ func (x *Err1PeerMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Err1PeerMsg.ProtoReflect.Descriptor instead.
 func (*Err1PeerMsg) Descriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{6}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Err1PeerMsg) GetDecModQ() *paillier.DecryMessage {
@@ -657,15 +959,14 @@ type Err2Msg struct {
 	state                 protoimpl.MessageState  `protogen:"open.v1"`
 	KMulBkShareCiphertext []byte                  `protobuf:"bytes,1,opt,name=kMulBkShareCiphertext,proto3" json:"kMulBkShareCiphertext,omitempty"`
 	Peers                 map[string]*Err2PeerMsg `protobuf:"bytes,2,rep,name=peers,proto3" json:"peers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// χ_i for Scheme A' (PublicX(χ) and σ−r·χ).
-	Chi           []byte `protobuf:"bytes,3,opt,name=chi,proto3" json:"chi,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Chi                   []byte                  `protobuf:"bytes,3,opt,name=chi,proto3" json:"chi,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *Err2Msg) Reset() {
 	*x = Err2Msg{}
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[7]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -677,7 +978,7 @@ func (x *Err2Msg) String() string {
 func (*Err2Msg) ProtoMessage() {}
 
 func (x *Err2Msg) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[7]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -690,7 +991,7 @@ func (x *Err2Msg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Err2Msg.ProtoReflect.Descriptor instead.
 func (*Err2Msg) Descriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{7}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Err2Msg) GetKMulBkShareCiphertext() []byte {
@@ -715,22 +1016,20 @@ func (x *Err2Msg) GetChi() []byte {
 }
 
 type Err2PeerMsg struct {
-	state        protoimpl.MessageState   `protogen:"open.v1"`
-	MulStarProof *paillier.MulStarMessage `protobuf:"bytes,1,opt,name=mulStarProof,proto3" json:"mulStarProof,omitempty"`
-	// DecModQ on untranslated C_inner vs PublicX(χ).
-	DecModQ           *paillier.DecryMessage `protobuf:"bytes,2,opt,name=decModQ,proto3" json:"decModQ,omitempty"`
-	ProductCiphertext []byte                 `protobuf:"bytes,3,opt,name=productCiphertext,proto3" json:"productCiphertext,omitempty"`
-	D                 []byte                 `protobuf:"bytes,4,opt,name=d,proto3" json:"d,omitempty"`
-	F                 []byte                 `protobuf:"bytes,5,opt,name=f,proto3" json:"f,omitempty"`
-	// DecModQ on K^m vs (σ − r·χ) mod q.
-	DecModQKm     *paillier.DecryMessage `protobuf:"bytes,6,opt,name=decModQKm,proto3" json:"decModQKm,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState   `protogen:"open.v1"`
+	MulStarProof      *paillier.MulStarMessage `protobuf:"bytes,1,opt,name=mulStarProof,proto3" json:"mulStarProof,omitempty"`
+	DecModQ           *paillier.DecryMessage   `protobuf:"bytes,2,opt,name=decModQ,proto3" json:"decModQ,omitempty"`
+	ProductCiphertext []byte                   `protobuf:"bytes,3,opt,name=productCiphertext,proto3" json:"productCiphertext,omitempty"`
+	D                 []byte                   `protobuf:"bytes,4,opt,name=d,proto3" json:"d,omitempty"`
+	F                 []byte                   `protobuf:"bytes,5,opt,name=f,proto3" json:"f,omitempty"`
+	DecModQKm         *paillier.DecryMessage   `protobuf:"bytes,6,opt,name=decModQKm,proto3" json:"decModQKm,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Err2PeerMsg) Reset() {
 	*x = Err2PeerMsg{}
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[8]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -742,7 +1041,7 @@ func (x *Err2PeerMsg) String() string {
 func (*Err2PeerMsg) ProtoMessage() {}
 
 func (x *Err2PeerMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[8]
+	mi := &file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -755,7 +1054,7 @@ func (x *Err2PeerMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Err2PeerMsg.ProtoReflect.Descriptor instead.
 func (*Err2PeerMsg) Descriptor() ([]byte, []int) {
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{8}
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Err2PeerMsg) GetMulStarProof() *paillier.MulStarMessage {
@@ -800,21 +1099,45 @@ func (x *Err2PeerMsg) GetDecModQKm() *paillier.DecryMessage {
 	return nil
 }
 
-var File_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto protoreflect.FileDescriptor
+var File_crypto_tss_ecdsa_cggmp_sign_message_proto protoreflect.FileDescriptor
 
-const file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc = "" +
+const file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc = "" +
 	"\n" +
-	"Bgithub.com/getamis/alice/crypto/tss/ecdsa/cggmp/sign/message.proto\x12)getamis.alice.crypto.tss.ecdsa.cggmp.sign\x1a;github.com/getamis/alice/crypto/ecpointgrouplaw/point.proto\x1a>github.com/getamis/alice/crypto/zkproof/paillier/message.proto\"\xba\x04\n" +
+	")crypto/tss/ecdsa/cggmp/sign/message.proto\x12)getamis.alice.crypto.tss.ecdsa.cggmp.sign\x1a;github.com/getamis/alice/crypto/ecpointgrouplaw/point.proto\x1a>github.com/getamis/alice/crypto/zkproof/paillier/message.proto\"\xe0\x06\n" +
 	"\aMessage\x12C\n" +
 	"\x04type\x18\x01 \x01(\x0e2/.getamis.alice.crypto.tss.ecdsa.cggmp.sign.TypeR\x04type\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\x12N\n" +
-	"\x06round1\x18\x04 \x01(\v24.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1MsgH\x00R\x06round1\x12N\n" +
-	"\x06round2\x18\x05 \x01(\v24.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2MsgH\x00R\x06round2\x12N\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\x12`\n" +
+	"\fround1Digest\x18\n" +
+	" \x01(\v2:.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1DigestMsgH\x00R\fround1Digest\x12N\n" +
+	"\x06round1\x18\x04 \x01(\v24.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1MsgH\x00R\x06round1\x12`\n" +
+	"\fround2Digest\x18\v \x01(\v2:.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2DigestMsgH\x00R\fround2Digest\x12N\n" +
+	"\x06round2\x18\x05 \x01(\v24.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2MsgH\x00R\x06round2\x12`\n" +
+	"\fround3Digest\x18\f \x01(\v2:.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3DigestMsgH\x00R\fround3Digest\x12N\n" +
 	"\x06round3\x18\x06 \x01(\v24.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3MsgH\x00R\x06round3\x12N\n" +
 	"\x06round4\x18\a \x01(\v24.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round4MsgH\x00R\x06round4\x12H\n" +
 	"\x04err1\x18\b \x01(\v22.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1MsgH\x00R\x04err1\x12H\n" +
 	"\x04err2\x18\t \x01(\v22.getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2MsgH\x00R\x04err2B\x06\n" +
-	"\x04body\"\xa5\x01\n" +
+	"\x04body\"B\n" +
+	"\x0fPeerDigestEntry\x12\x17\n" +
+	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12\x16\n" +
+	"\x06digest\x18\x02 \x01(\fR\x06digest\"\xd3\x01\n" +
+	"\x0fRound1DigestMsg\x12!\n" +
+	"\fk_ciphertext\x18\x01 \x01(\fR\vkCiphertext\x12)\n" +
+	"\x10gamma_ciphertext\x18\x02 \x01(\fR\x0fgammaCiphertext\x12S\n" +
+	"\ato_peer\x18\x03 \x03(\v2:.getamis.alice.crypto.tss.ecdsa.cggmp.sign.PeerDigestEntryR\x06toPeer\x12\x1d\n" +
+	"\n" +
+	"table_root\x18\x04 \x01(\fR\ttableRoot\"\xd1\x01\n" +
+	"\x0fRound2DigestMsg\x12J\n" +
+	"\x05gamma\x18\x01 \x01(\v24.getamis.alice.crypto.ecpointgrouplaw.EcPointMessageR\x05gamma\x12S\n" +
+	"\ato_peer\x18\x02 \x03(\v2:.getamis.alice.crypto.tss.ecdsa.cggmp.sign.PeerDigestEntryR\x06toPeer\x12\x1d\n" +
+	"\n" +
+	"table_root\x18\x03 \x01(\fR\ttableRoot\"\xee\x01\n" +
+	"\x0fRound3DigestMsg\x12\x14\n" +
+	"\x05delta\x18\x01 \x01(\tR\x05delta\x12Q\n" +
+	"\tbig_delta\x18\x02 \x01(\v24.getamis.alice.crypto.ecpointgrouplaw.EcPointMessageR\bbigDelta\x12S\n" +
+	"\ato_peer\x18\x03 \x03(\v2:.getamis.alice.crypto.tss.ecdsa.cggmp.sign.PeerDigestEntryR\x06toPeer\x12\x1d\n" +
+	"\n" +
+	"table_root\x18\x04 \x01(\fR\ttableRoot\"\xa5\x01\n" +
 	"\tRound1Msg\x12 \n" +
 	"\vkCiphertext\x18\x01 \x01(\fR\vkCiphertext\x12(\n" +
 	"\x0fgammaCiphertext\x18\x02 \x01(\fR\x0fgammaCiphertext\x12L\n" +
@@ -861,93 +1184,111 @@ const file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_ra
 	"\x11productCiphertext\x18\x03 \x01(\fR\x11productCiphertext\x12\f\n" +
 	"\x01d\x18\x04 \x01(\fR\x01d\x12\f\n" +
 	"\x01f\x18\x05 \x01(\fR\x01f\x12Q\n" +
-	"\tdecModQKm\x18\x06 \x01(\v23.getamis.alice.crypto.zkproof.paillier.DecryMessageR\tdecModQKm*J\n" +
-	"\x04Type\x12\n" +
+	"\tdecModQKm\x18\x06 \x01(\v23.getamis.alice.crypto.zkproof.paillier.DecryMessageR\tdecModQKm*\x80\x01\n" +
+	"\x04Type\x12\x10\n" +
+	"\fRound1Digest\x10\x00\x12\n" +
 	"\n" +
-	"\x06Round1\x10\x00\x12\n" +
+	"\x06Round1\x10\x01\x12\x10\n" +
+	"\fRound2Digest\x10\x02\x12\n" +
 	"\n" +
-	"\x06Round2\x10\x01\x12\n" +
+	"\x06Round2\x10\x03\x12\x10\n" +
+	"\fRound3Digest\x10\x04\x12\n" +
 	"\n" +
-	"\x06Round3\x10\x02\x12\n" +
+	"\x06Round3\x10\x05\x12\n" +
 	"\n" +
-	"\x06Round4\x10\x03\x12\b\n" +
-	"\x04Err1\x10\x04\x12\b\n" +
-	"\x04Err2\x10\x05B6Z4github.com/getamis/alice/crypto/tss/ecdsa/cggmp/signb\x06proto3"
+	"\x06Round4\x10\x06\x12\b\n" +
+	"\x04Err1\x10\a\x12\b\n" +
+	"\x04Err2\x10\bB6Z4github.com/getamis/alice/crypto/tss/ecdsa/cggmp/signb\x06proto3"
 
 var (
-	file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescOnce sync.Once
-	file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescData []byte
+	file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescOnce sync.Once
+	file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescData []byte
 )
 
-func file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP() []byte {
-	file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescOnce.Do(func() {
-		file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc), len(file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc)))
+func file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescGZIP() []byte {
+	file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescOnce.Do(func() {
+		file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc), len(file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc)))
 	})
-	return file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescData
+	return file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDescData
 }
 
-var file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
-var file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_goTypes = []any{
-	(Type)(0),                            // 0: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Type
-	(*Message)(nil),                      // 1: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message
-	(*Round1Msg)(nil),                    // 2: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1Msg
-	(*Round2Msg)(nil),                    // 3: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg
-	(*Round3Msg)(nil),                    // 4: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3Msg
-	(*Round4Msg)(nil),                    // 5: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round4Msg
-	(*Err1Msg)(nil),                      // 6: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg
-	(*Err1PeerMsg)(nil),                  // 7: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1PeerMsg
-	(*Err2Msg)(nil),                      // 8: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg
-	(*Err2PeerMsg)(nil),                  // 9: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg
-	nil,                                  // 10: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.PeersEntry
-	nil,                                  // 11: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg.PeersEntry
-	(*paillier.EncryptRangeMessage)(nil), // 12: getamis.alice.crypto.zkproof.paillier.EncryptRangeMessage
-	(*paillier.PaillierAffAndGroupRangeMessage)(nil), // 13: getamis.alice.crypto.zkproof.paillier.PaillierAffAndGroupRangeMessage
-	(*paillier.LogStarMessage)(nil),                  // 14: getamis.alice.crypto.zkproof.paillier.LogStarMessage
-	(*ecpointgrouplaw.EcPointMessage)(nil),           // 15: getamis.alice.crypto.ecpointgrouplaw.EcPointMessage
-	(*paillier.MulMessage)(nil),                      // 16: getamis.alice.crypto.zkproof.paillier.MulMessage
-	(*paillier.DecryMessage)(nil),                    // 17: getamis.alice.crypto.zkproof.paillier.DecryMessage
-	(*paillier.MulStarMessage)(nil),                  // 18: getamis.alice.crypto.zkproof.paillier.MulStarMessage
+var file_crypto_tss_ecdsa_cggmp_sign_message_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_crypto_tss_ecdsa_cggmp_sign_message_proto_goTypes = []any{
+	(Type)(0),                              // 0: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Type
+	(*Message)(nil),                        // 1: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message
+	(*PeerDigestEntry)(nil),                // 2: getamis.alice.crypto.tss.ecdsa.cggmp.sign.PeerDigestEntry
+	(*Round1DigestMsg)(nil),                // 3: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1DigestMsg
+	(*Round2DigestMsg)(nil),                // 4: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2DigestMsg
+	(*Round3DigestMsg)(nil),                // 5: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3DigestMsg
+	(*Round1Msg)(nil),                      // 6: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1Msg
+	(*Round2Msg)(nil),                      // 7: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg
+	(*Round3Msg)(nil),                      // 8: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3Msg
+	(*Round4Msg)(nil),                      // 9: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round4Msg
+	(*Err1Msg)(nil),                        // 10: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg
+	(*Err1PeerMsg)(nil),                    // 11: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1PeerMsg
+	(*Err2Msg)(nil),                        // 12: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg
+	(*Err2PeerMsg)(nil),                    // 13: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg
+	nil,                                    // 14: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.PeersEntry
+	nil,                                    // 15: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg.PeersEntry
+	(*ecpointgrouplaw.EcPointMessage)(nil), // 16: getamis.alice.crypto.ecpointgrouplaw.EcPointMessage
+	(*paillier.EncryptRangeMessage)(nil),   // 17: getamis.alice.crypto.zkproof.paillier.EncryptRangeMessage
+	(*paillier.PaillierAffAndGroupRangeMessage)(nil), // 18: getamis.alice.crypto.zkproof.paillier.PaillierAffAndGroupRangeMessage
+	(*paillier.LogStarMessage)(nil),                  // 19: getamis.alice.crypto.zkproof.paillier.LogStarMessage
+	(*paillier.MulMessage)(nil),                      // 20: getamis.alice.crypto.zkproof.paillier.MulMessage
+	(*paillier.DecryMessage)(nil),                    // 21: getamis.alice.crypto.zkproof.paillier.DecryMessage
+	(*paillier.MulStarMessage)(nil),                  // 22: getamis.alice.crypto.zkproof.paillier.MulStarMessage
 }
-var file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_depIdxs = []int32{
+var file_crypto_tss_ecdsa_cggmp_sign_message_proto_depIdxs = []int32{
 	0,  // 0: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.type:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Type
-	2,  // 1: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round1:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1Msg
-	3,  // 2: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round2:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg
-	4,  // 3: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round3:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3Msg
-	5,  // 4: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round4:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round4Msg
-	6,  // 5: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.err1:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg
-	8,  // 6: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.err2:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg
-	12, // 7: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1Msg.psi:type_name -> getamis.alice.crypto.zkproof.paillier.EncryptRangeMessage
-	13, // 8: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg.psi:type_name -> getamis.alice.crypto.zkproof.paillier.PaillierAffAndGroupRangeMessage
-	13, // 9: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg.psihat:type_name -> getamis.alice.crypto.zkproof.paillier.PaillierAffAndGroupRangeMessage
-	14, // 10: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg.psipai:type_name -> getamis.alice.crypto.zkproof.paillier.LogStarMessage
-	15, // 11: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg.Gamma:type_name -> getamis.alice.crypto.ecpointgrouplaw.EcPointMessage
-	15, // 12: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3Msg.bigDelta:type_name -> getamis.alice.crypto.ecpointgrouplaw.EcPointMessage
-	14, // 13: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3Msg.psidoublepai:type_name -> getamis.alice.crypto.zkproof.paillier.LogStarMessage
-	16, // 14: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.mulProof:type_name -> getamis.alice.crypto.zkproof.paillier.MulMessage
-	10, // 15: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.peers:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.PeersEntry
-	17, // 16: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1PeerMsg.decModQ:type_name -> getamis.alice.crypto.zkproof.paillier.DecryMessage
-	11, // 17: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg.peers:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg.PeersEntry
-	18, // 18: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg.mulStarProof:type_name -> getamis.alice.crypto.zkproof.paillier.MulStarMessage
-	17, // 19: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg.decModQ:type_name -> getamis.alice.crypto.zkproof.paillier.DecryMessage
-	17, // 20: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg.decModQKm:type_name -> getamis.alice.crypto.zkproof.paillier.DecryMessage
-	7,  // 21: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.PeersEntry.value:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1PeerMsg
-	9,  // 22: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg.PeersEntry.value:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg
-	23, // [23:23] is the sub-list for method output_type
-	23, // [23:23] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	3,  // 1: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round1Digest:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1DigestMsg
+	6,  // 2: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round1:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1Msg
+	4,  // 3: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round2Digest:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2DigestMsg
+	7,  // 4: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round2:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg
+	5,  // 5: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round3Digest:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3DigestMsg
+	8,  // 6: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round3:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3Msg
+	9,  // 7: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.round4:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round4Msg
+	10, // 8: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.err1:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg
+	12, // 9: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Message.err2:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg
+	2,  // 10: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1DigestMsg.to_peer:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.PeerDigestEntry
+	16, // 11: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2DigestMsg.gamma:type_name -> getamis.alice.crypto.ecpointgrouplaw.EcPointMessage
+	2,  // 12: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2DigestMsg.to_peer:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.PeerDigestEntry
+	16, // 13: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3DigestMsg.big_delta:type_name -> getamis.alice.crypto.ecpointgrouplaw.EcPointMessage
+	2,  // 14: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3DigestMsg.to_peer:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.PeerDigestEntry
+	17, // 15: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round1Msg.psi:type_name -> getamis.alice.crypto.zkproof.paillier.EncryptRangeMessage
+	18, // 16: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg.psi:type_name -> getamis.alice.crypto.zkproof.paillier.PaillierAffAndGroupRangeMessage
+	18, // 17: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg.psihat:type_name -> getamis.alice.crypto.zkproof.paillier.PaillierAffAndGroupRangeMessage
+	19, // 18: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg.psipai:type_name -> getamis.alice.crypto.zkproof.paillier.LogStarMessage
+	16, // 19: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round2Msg.Gamma:type_name -> getamis.alice.crypto.ecpointgrouplaw.EcPointMessage
+	16, // 20: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3Msg.bigDelta:type_name -> getamis.alice.crypto.ecpointgrouplaw.EcPointMessage
+	19, // 21: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Round3Msg.psidoublepai:type_name -> getamis.alice.crypto.zkproof.paillier.LogStarMessage
+	20, // 22: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.mulProof:type_name -> getamis.alice.crypto.zkproof.paillier.MulMessage
+	14, // 23: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.peers:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.PeersEntry
+	21, // 24: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1PeerMsg.decModQ:type_name -> getamis.alice.crypto.zkproof.paillier.DecryMessage
+	15, // 25: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg.peers:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg.PeersEntry
+	22, // 26: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg.mulStarProof:type_name -> getamis.alice.crypto.zkproof.paillier.MulStarMessage
+	21, // 27: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg.decModQ:type_name -> getamis.alice.crypto.zkproof.paillier.DecryMessage
+	21, // 28: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg.decModQKm:type_name -> getamis.alice.crypto.zkproof.paillier.DecryMessage
+	11, // 29: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1Msg.PeersEntry.value:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err1PeerMsg
+	13, // 30: getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2Msg.PeersEntry.value:type_name -> getamis.alice.crypto.tss.ecdsa.cggmp.sign.Err2PeerMsg
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
-func init() { file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_init() }
-func file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_init() {
-	if File_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto != nil {
+func init() { file_crypto_tss_ecdsa_cggmp_sign_message_proto_init() }
+func file_crypto_tss_ecdsa_cggmp_sign_message_proto_init() {
+	if File_crypto_tss_ecdsa_cggmp_sign_message_proto != nil {
 		return
 	}
-	file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[0].OneofWrappers = []any{
+	file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes[0].OneofWrappers = []any{
+		(*Message_Round1Digest)(nil),
 		(*Message_Round1)(nil),
+		(*Message_Round2Digest)(nil),
 		(*Message_Round2)(nil),
+		(*Message_Round3Digest)(nil),
 		(*Message_Round3)(nil),
 		(*Message_Round4)(nil),
 		(*Message_Err1)(nil),
@@ -957,18 +1298,18 @@ func file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_ini
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc), len(file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc), len(file_crypto_tss_ecdsa_cggmp_sign_message_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   11,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_goTypes,
-		DependencyIndexes: file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_depIdxs,
-		EnumInfos:         file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_enumTypes,
-		MessageInfos:      file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes,
+		GoTypes:           file_crypto_tss_ecdsa_cggmp_sign_message_proto_goTypes,
+		DependencyIndexes: file_crypto_tss_ecdsa_cggmp_sign_message_proto_depIdxs,
+		EnumInfos:         file_crypto_tss_ecdsa_cggmp_sign_message_proto_enumTypes,
+		MessageInfos:      file_crypto_tss_ecdsa_cggmp_sign_message_proto_msgTypes,
 	}.Build()
-	File_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto = out.File
-	file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_goTypes = nil
-	file_github_com_getamis_alice_crypto_tss_ecdsa_cggmp_sign_message_proto_depIdxs = nil
+	File_crypto_tss_ecdsa_cggmp_sign_message_proto = out.File
+	file_crypto_tss_ecdsa_cggmp_sign_message_proto_goTypes = nil
+	file_crypto_tss_ecdsa_cggmp_sign_message_proto_depIdxs = nil
 }

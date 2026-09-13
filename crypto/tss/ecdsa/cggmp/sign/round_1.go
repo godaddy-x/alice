@@ -15,6 +15,7 @@
 package sign
 
 import (
+	"bytes"
 	"errors"
 	"math/big"
 
@@ -87,6 +88,10 @@ type round1Handler struct {
 	peers       map[string]*peer
 	own         *peer
 
+	ssid []byte
+
+	digestStore *pairwiseDigestStore
+
 	onAbortMsg    func(*Message)
 	onBlamedPeers func(map[string]struct{})
 }
@@ -120,15 +125,8 @@ func newRound1Handler(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.
 		return nil, err
 	}
 	ysFromPartialPubKey := make([]*pt.ECPoint, len(bkss))
-	ysFromPartialPubKey[0] = partialPubKey[selfId]
-	j := 1
-	for id, bk := range bks {
-		if id == selfId {
-			continue
-		}
-		_ = bk
-		ysFromPartialPubKey[j] = partialPubKey[id]
-		j++
+	for i, id := range ids {
+		ysFromPartialPubKey[i] = partialPubKey[id]
 	}
 	if err := bkss.ValidatePublicKey(ysFromPartialPubKey, threshold, pubKey); err != nil {
 		return nil, err
@@ -177,6 +175,7 @@ func newRound1Handler(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.
 		paillierKey:     paillierKey,
 		bkpartialPubKey: own.partialPubKey.ScalarMult(own.bkcoefficient),
 		msg:             msg,
+		ssid:            append([]byte(nil), ssid...),
 
 		k:               k,
 		rho:             rho,
@@ -192,6 +191,7 @@ func newRound1Handler(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.
 		peerNum:     peerManager.NumPeers(),
 		peers:       peers,
 		own:         own,
+		digestStore: newPairwiseDigestStore(),
 	}, nil
 }
 
@@ -222,6 +222,18 @@ func (p *round1Handler) HandleMessage(logger log.Logger, message types.Message) 
 	}
 
 	round1 := msg.GetRound1()
+	selfID := p.peerManager.SelfID()
+	if err := p.gateEdgeDigest(digestR1, id, selfID, func() ([]byte, error) {
+		return Round1PsiDigest(p.ssid, id, selfID, round1.GetPsi())
+	}); err != nil {
+		return err
+	}
+	if !bytes.Equal(peer.digestKCiphertext, round1.GetKCiphertext()) ||
+		!bytes.Equal(peer.digestGammaCiphertext, round1.GetGammaCiphertext()) {
+		p.blameSender(id)
+		return ErrPairwiseDigestMismatch
+	}
+
 	ownPed := p.own.para
 	peerPed := peer.para
 	n := peerPed.GetN()
@@ -229,6 +241,7 @@ func (p *round1Handler) HandleMessage(logger log.Logger, message types.Message) 
 	// verify Proof_enc
 	err := round1.Psi.Verify(parameter, p.own.ssidWithBk, round1.KCiphertext, n, ownPed)
 	if err != nil {
+		p.blameSender(id)
 		return err
 	}
 	return peer.AddMessage(msg)
@@ -299,34 +312,11 @@ func (p *round1Handler) Finalize(logger log.Logger) (types.Handler, error) {
 		}
 	}
 
-	for id, peer := range p.peers {
-		p.peerManager.MustSend(id, peer.round1Data.round2Msg)
+	// Barrier: commit Round2 digests; reveal only after all digests echoed.
+	if err := p.buildRound2DigestAndBroadcast(msgGamma); err != nil {
+		return nil, err
 	}
-	return newRound2Handler(p)
-}
-
-func (p *round1Handler) sendRound1Messages() error {
-	n := p.paillierKey.GetN()
-	selfId := p.peerManager.SelfID()
-	for id, peer := range p.peers {
-		// Compute proof psi_{j,i}^0
-		psi, err := paillierzkproof.NewEncryptRangeMessage(parameter, peer.ssidWithBk, p.kCiphertext, n, p.k, p.rho, peer.para)
-		if err != nil {
-			return err
-		}
-		p.peerManager.MustSend(id, &Message{
-			Id:   selfId,
-			Type: Type_Round1,
-			Body: &Message_Round1{
-				Round1: &Round1Msg{
-					KCiphertext:     p.kCiphertext.Bytes(),
-					GammaCiphertext: p.gammaCiphertext.Bytes(),
-					Psi:             psi,
-				},
-			},
-		})
-	}
-	return nil
+	return newRound2DigestHandler(p), nil
 }
 
 func getMessage(messsage types.Message) *Message {

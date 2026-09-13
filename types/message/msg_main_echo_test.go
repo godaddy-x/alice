@@ -94,6 +94,11 @@ var _ = Describe("EchoMsgMain", func() {
 					return []byte("echo-b"), nil
 				}
 
+				var blamed string
+				msgMain.SetOnConflict(func(authorID string) {
+					blamed = authorID
+				})
+
 				mockMsg1.On("GetMessageType").Return(echoMsgType).Once()
 				mockMsg1.On("GetEchoMessage").Return(mockMsg1).Twice()
 				mockMsg1.On("GetId").Return(msgId).Twice()
@@ -109,6 +114,7 @@ var _ = Describe("EchoMsgMain", func() {
 				mockMsg2.On("GetId").Return(msgId).Once()
 				err = msgMain.AddMessage(msgId, mockMsg2)
 				Expect(err).Should(Equal(ErrDifferentHash))
+				Expect(blamed).Should(Equal(msgId))
 			})
 		})
 	})

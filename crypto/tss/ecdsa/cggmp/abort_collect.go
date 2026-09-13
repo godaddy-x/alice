@@ -58,14 +58,29 @@ func (a *errCollectMain[T]) AddMessage(senderId string, msg types.Message) error
 	return a.MessageMain.AddMessage(senderId, msg)
 }
 
+func (a *errCollectMain[T]) Fail() error {
+	type failer interface {
+		Fail() error
+	}
+	if f, ok := a.MessageMain.(failer); ok {
+		return f.Fail()
+	}
+	return message.ErrBadMsg
+}
+
 // WrapEchoAbortCollect wraps MsgMain with Echo then Err recording.
+// onEchoConflict, if non-nil, is called with the message author id on echo equivocation.
 func WrapEchoAbortCollect[T types.Message](
 	ms *message.MsgMain,
 	pm types.PeerManager,
 	collector *AbortMsgCollector[T],
 	isErr func(T) bool,
+	onEchoConflict func(authorID string),
 ) types.MessageMain {
 	echoMain := message.NewEchoMsgMain(ms, pm)
+	if onEchoConflict != nil {
+		echoMain.SetOnConflict(onEchoConflict)
+	}
 	return &errCollectMain[T]{
 		MessageMain: echoMain,
 		collector:   collector,

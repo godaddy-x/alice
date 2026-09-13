@@ -37,3 +37,9 @@ type InitialMsgCountHandler interface {
 type AbortCollectHandler interface {
 	AbortCollecting() bool
 }
+
+// DigestBarrierHandler marks commit–reveal digest handlers.
+// MsgMain applies abortTimeout while waiting for remote Round*Digest messages.
+type DigestBarrierHandler interface {
+	OnDigestTimeout()
+}

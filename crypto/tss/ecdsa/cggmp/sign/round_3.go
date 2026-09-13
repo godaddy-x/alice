@@ -39,6 +39,10 @@ type round3Handler struct {
 	err1Msg *Message
 }
 
+// round3BeforeAggregateVerifyTestHook is set by mesh abort E2E tests to force
+// aggregate δ verification failure after honest Round3 reveals were collected.
+var round3BeforeAggregateVerifyTestHook func(*round3Handler)
+
 func newRound3Handler(round2Handler *round2Handler) (*round3Handler, error) {
 	return &round3Handler{
 		round2Handler: round2Handler,
@@ -76,17 +80,30 @@ func (p *round3Handler) HandleMessage(logger log.Logger, message types.Message) 
 	Delta, err := round3.BigDelta.ToPoint()
 	if err != nil {
 		logger.Debug("Failed to ToPoint", "err", err)
+		p.blameSender(id)
 		return err
+	}
+	selfID := p.peerManager.SelfID()
+	if err := p.gateEdgeDigest(digestR3, id, selfID, func() ([]byte, error) {
+		return Round3PairwiseDigest(p.ssid, id, selfID, round3.GetPsidoublepai())
+	}); err != nil {
+		return err
+	}
+	if peer.digestDelta != round3.GetDelta() || peer.digestBigDelta == nil || !peer.digestBigDelta.Equal(Delta) {
+		p.blameSender(id)
+		return ErrPairwiseDigestMismatch
 	}
 	err = round3.Psidoublepai.Verify(parameter, peer.ssidWithBk, peer.round1Data.kCiphertext, peer.para.GetN(), ownPed, Delta, p.sumGamma)
 	if err != nil {
 		logger.Debug("Failed to Verify", "err", err)
+		p.blameSender(id)
 		return err
 	}
 
 	tempDelta, err := cggmp.ParseBigIntString(round3.Delta, 10)
 	if err != nil {
 		logger.Debug("Failed to parse delta", "err", err)
+		p.blameSender(id)
 		return err
 	}
 	peer.round3Data = &round3Data{
@@ -114,6 +131,18 @@ func (p *round3Handler) Finalize(logger log.Logger) (types.Handler, error) {
 		if err != nil {
 			logger.Debug("Failed to Add", "err", err)
 			return nil, err
+		}
+	}
+
+	if round3BeforeAggregateVerifyTestHook != nil {
+		round3BeforeAggregateVerifyTestHook(p)
+		// Re-aggregate scalar δ in case the hook altered a peer reveal.
+		delta = new(big.Int).Set(p.delta)
+		for _, peer := range p.peers {
+			if peer.round3Data == nil || peer.round3Data.delta == nil {
+				continue
+			}
+			delta.Add(delta, peer.round3Data.delta)
 		}
 	}
 

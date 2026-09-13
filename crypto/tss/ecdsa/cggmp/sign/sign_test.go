@@ -16,15 +16,10 @@ package sign
 import (
 	"math/big"
 	"testing"
+	"time"
 
-	"github.com/getamis/alice/crypto/birkhoffinterpolation"
-	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
-	"github.com/getamis/alice/crypto/elliptic"
-	"github.com/getamis/alice/crypto/homo/paillier"
 	"github.com/getamis/alice/crypto/tss"
-	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types"
-	"github.com/getamis/alice/types/mocks"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -35,96 +30,193 @@ func TestSign3Round(t *testing.T) {
 	RunSpecs(t, "Sign Suite")
 }
 
-var (
-	threshold = uint32(2)
-	secret    = big.NewInt(1)
-	curve     = elliptic.Secp256k1()
-	publicKey = pt.ScalarBaseMult(curve, secret)
-	msg       = []byte("Edwin HaHa")
-)
-
 var _ = Describe("Refresh", func() {
 	It("should be ok", func() {
 		signs, _, listeners := newSigns()
-		doneChs := []chan struct{}{}
-		for _, l := range listeners {
-			ch := make(chan struct{})
-			doneChs = append(doneChs, ch)
-			l.On("OnStateChanged", types.StateInit, types.StateDone).Run(func(_ mock.Arguments) {
-				close(ch)
-			}).Once()
-		}
-		for _, d := range signs {
-			d.Start()
-		}
-		for _, ch := range doneChs {
-			<-ch
-		}
+		startAllAndWaitDone(signs, listeners)
 		for _, l := range listeners {
 			l.AssertExpectations(GinkgoT())
 		}
+		assertMatchingSignResults(signs, 2)
+	})
 
-		r0, err := signs[tss.GetTestID(0)].GetResult()
+	It("digest timeout blames peer that never sends Round1Digest", func() {
+		signs, _, listeners := newSigns()
+		id0 := tss.GetTestID(0)
+		id1 := tss.GetTestID(1)
+		signs[id0].SetAbortTimeout(200 * time.Millisecond)
+
+		done := make(chan struct{})
+		listeners[id0].On("OnStateChanged", types.StateInit, types.StateFailed).Run(func(_ mock.Arguments) {
+			close(done)
+		}).Once()
+
+		signs[id0].Start()
+		Eventually(done, 2*time.Second).Should(BeClosed())
+
+		blamed, err := signs[id0].GetBlamedPeers()
 		Expect(err).Should(BeNil())
-		r1, err := signs[tss.GetTestID(1)].GetResult()
+		Expect(blamed).To(HaveKey(id1))
+	})
+
+	It("Round2 digest timeout blames peer that never sends Round2Digest", func() {
+		signs, _, listeners := buildSignsOpts(2, signBuildOptions{
+			blockSendType: map[int]Type{1: Type_Round2Digest},
+		})
+		id0 := tss.GetTestID(0)
+		id1 := tss.GetTestID(1)
+		signs[id0].SetAbortTimeout(3 * time.Second)
+
+		failed := make(chan struct{})
+		listeners[id0].On("OnStateChanged", types.StateInit, types.StateFailed).Run(func(_ mock.Arguments) {
+			close(failed)
+		}).Once()
+
+		for _, s := range signs {
+			s.Start()
+		}
+		Eventually(failed, 10*time.Second).Should(BeClosed())
+
+		blamed, err := signs[id0].GetBlamedPeers()
 		Expect(err).Should(BeNil())
-		Expect(r0.R.Cmp(r1.R) == 0).Should(BeTrue())
-		Expect(r0.S.Cmp(r1.S) == 0).Should(BeTrue())
+		Expect(blamed).To(HaveKey(id1))
+	})
+
+	It("Round3 digest timeout blames peer that never sends Round3Digest", func() {
+		signs, _, listeners := buildSignsOpts(2, signBuildOptions{
+			blockSendType: map[int]Type{1: Type_Round3Digest},
+		})
+		id0 := tss.GetTestID(0)
+		id1 := tss.GetTestID(1)
+		signs[id0].SetAbortTimeout(3 * time.Second)
+
+		failed := make(chan struct{})
+		listeners[id0].On("OnStateChanged", types.StateInit, types.StateFailed).Run(func(_ mock.Arguments) {
+			close(failed)
+		}).Once()
+
+		for _, s := range signs {
+			s.Start()
+		}
+		Eventually(failed, 15*time.Second).Should(BeClosed())
+
+		blamed, err := signs[id0].GetBlamedPeers()
+		Expect(err).Should(BeNil())
+		Expect(blamed).To(HaveKey(id1))
+	})
+
+	It("ProcessErr1 rejects peer when Round2 digest mismatches store", func() {
+		ssidInfoWithBK := []byte("digest-bind")
+		k1 := big.NewInt(5)
+		k2 := big.NewInt(2)
+		K1, rho1, err := errPaillierKeyA.EncryptWithOutputSalt(k1)
+		Expect(err).Should(BeNil())
+		K2, rho2, err := errPaillierKeyB.EncryptWithOutputSalt(k2)
+		Expect(err).Should(BeNil())
+		gamma1 := big.NewInt(11)
+		gamma2 := big.NewInt(10)
+		G1, mu1, err := errPaillierKeyA.EncryptWithOutputSalt(gamma1)
+		Expect(err).Should(BeNil())
+		G2, mu2, err := errPaillierKeyB.EncryptWithOutputSalt(gamma2)
+		Expect(err).Should(BeNil())
+		Gamma1 := errTestG.ScalarMult(gamma1)
+		Gamma2 := errTestG.ScalarMult(gamma2)
+		sumGamma := errTestG.ScalarMult(gamma1)
+		sumGamma, err = sumGamma.Add(Gamma2)
+		Expect(err).Should(BeNil())
+		bigDelta1 := sumGamma.ScalarMult(k1)
+		bigDelta2 := sumGamma.ScalarMult(k2)
+		ID1 := tss.GetTestID(0)
+		ID2 := tss.GetTestID(1)
+
+		p1Setup, p2Setup := setupErr1Parties(ssidInfoWithBK, errPaillierKeyA, errPaillierKeyB, k1, k2, K1, K2, G1, G2, gamma1, gamma2, Gamma1, Gamma2, bigDelta1, bigDelta2, ID1, ID2)
+		map1 := map[string]*peer{ID2: p1Setup.peer}
+		p1Err := newRound3HandlerErr1(k1, gamma1, rho1, mu1, K1, G1, p1Setup.delta, bigDelta1, sumGamma, errPaillierKeyA, map1, 0, p1Setup.own)
+		p2Err := newRound3HandlerErr1(k2, gamma2, rho2, mu2, K2, G2, p2Setup.delta, bigDelta2, sumGamma, errPaillierKeyB, map[string]*peer{ID1: p2Setup.peer}, 1, p2Setup.own)
+		Expect(p1Err.buildDeltaVerifyFailureMsg()).Should(Succeed())
+		Expect(p2Err.buildDeltaVerifyFailureMsg()).Should(Succeed())
+
+		r2Body := &Round2Msg{
+			D:  p1Setup.peer.round2Data.d.Bytes(),
+			F:  p1Setup.peer.round2Data.f.Bytes(),
+			Psi: p1Setup.peer.round2Data.psiProof,
+		}
+		Expect(p1Setup.peer.AddMessage(&Message{
+			Id: ID2, Type: Type_Round2, Body: &Message_Round2{Round2: r2Body},
+		})).Should(Succeed())
+
+		store := newPairwiseDigestStore()
+		wrong, err := Round2PairwiseDigest(ssidInfoWithBK, ID2, ID1, &Round2Msg{D: []byte{0xff}})
+		Expect(err).Should(BeNil())
+		store.SetFinalized(digestR2, ID2, map[string][]byte{ID1: wrong})
+		p1Err.digestStore = store
+		p1Err.ssid = ssidInfoWithBK
+
+		errMsg2 := &Message{Id: ID2, Type: Type_Err1, Body: p2Err.err1Msg.Body}
+		blamed, err := p1Err.ProcessErr1Msg([]*Message{errMsg2})
+		Expect(err).Should(BeNil())
+		Expect(blamed).To(HaveKey(ID2))
+	})
+
+	It("ProcessErr2 rejects peer when Round2 digest mismatches store", func() {
+		ssidInfoWithBK := []byte("digest-bind-err2")
+		k1 := big.NewInt(5)
+		k2 := big.NewInt(2)
+		b1 := big.NewInt(3)
+		b2 := big.NewInt(10)
+		K1, rho1, err := errPaillierKeyA.EncryptWithOutputSalt(k1)
+		Expect(err).Should(BeNil())
+		K2, rho2, err := errPaillierKeyB.EncryptWithOutputSalt(k2)
+		Expect(err).Should(BeNil())
+		x1 := big.NewInt(2)
+		x2 := big.NewInt(3)
+		bk1 := big.NewInt(2)
+		bk2 := big.NewInt(-1)
+		rX := big.NewInt(17)
+		R := errTestG.ScalarMult(rX)
+		ID1 := tss.GetTestID(0)
+		ID2 := tss.GetTestID(1)
+		bkMulShare1 := new(big.Int).Mul(x1, bk1)
+		bkMulShare2 := new(big.Int).Mul(x2, bk2)
+		bkPartial1 := errTestG.ScalarMult(x1).ScalarMult(bk1)
+		bkPartial2 := errTestG.ScalarMult(x2).ScalarMult(bk2)
+
+		p1Setup, p2Setup := setupErr2Parties(ssidInfoWithBK, errPaillierKeyA, errPaillierKeyB, K1, K2, k1, k2, x1, x2, bkMulShare1, bkMulShare2, bkPartial1, bkPartial2, rX, ID1, ID2)
+		map1 := map[string]*peer{ID2: p1Setup.peer}
+		p1Err := newRound4HandlerErr2(b1, k1, rho1, rX, K1, errPaillierKeyA, map1, 0, p1Setup.own)
+		p2Err := newRound4HandlerErr2(b2, k2, rho2, rX, K2, errPaillierKeyB, map[string]*peer{ID1: p2Setup.peer}, 1, p2Setup.own)
+		p1Err.R = R
+		p2Err.R = R
+		p1Err.chi = p1Setup.chi
+		p2Err.chi = p2Setup.chi
+		p1Err.sigma = p1Setup.sigma
+		p2Err.sigma = p2Setup.sigma
+		p1Err.bkMulShare = bkMulShare1
+		p2Err.bkMulShare = bkMulShare2
+		p1Err.bkpartialPubKey = bkPartial1
+		p2Err.bkpartialPubKey = bkPartial2
+		Expect(p1Err.buildSigmaVerifyFailureMsg()).Should(Succeed())
+		Expect(p2Err.buildSigmaVerifyFailureMsg()).Should(Succeed())
+
+		r2Body := &Round2Msg{
+			Dhat:   p1Setup.peer.round2Data.dhat.Bytes(),
+			Fhat:   p1Setup.peer.round2Data.fhat.Bytes(),
+			Psihat: p1Setup.peer.round2Data.psihatProoof,
+		}
+		Expect(p1Setup.peer.AddMessage(&Message{
+			Id: ID2, Type: Type_Round2, Body: &Message_Round2{Round2: r2Body},
+		})).Should(Succeed())
+
+		store := newPairwiseDigestStore()
+		wrong, err := Round2PairwiseDigest(ssidInfoWithBK, ID2, ID1, &Round2Msg{Dhat: []byte{0xff}})
+		Expect(err).Should(BeNil())
+		store.SetFinalized(digestR2, ID2, map[string][]byte{ID1: wrong})
+		p1Err.digestStore = store
+		p1Err.ssid = ssidInfoWithBK
+
+		errMsg2 := &Message{Id: ID2, Type: Type_Err2, Body: p2Err.err2Msg.Body}
+		blamed, err := p1Err.ProcessErr2Msg([]*Message{errMsg2})
+		Expect(err).Should(BeNil())
+		Expect(blamed).To(HaveKey(ID2))
 	})
 })
-
-func newSigns() (map[string]*Sign, map[string]*birkhoffinterpolation.BkParameter, map[string]*mocks.StateChangedListener) {
-	lens := 2
-	signs := make(map[string]*Sign, lens)
-	signsMain := make(map[string]types.MessageMain, lens)
-	peerManagers := make([]types.PeerManager, lens)
-	listeners := make(map[string]*mocks.StateChangedListener, lens)
-	bks := map[string]*birkhoffinterpolation.BkParameter{
-		tss.GetTestID(0): birkhoffinterpolation.NewBkParameter(big.NewInt(1), 0),
-		tss.GetTestID(1): birkhoffinterpolation.NewBkParameter(big.NewInt(2), 0),
-	}
-	shares := []*big.Int{
-		big.NewInt(2),
-		big.NewInt(3),
-	}
-	ssidInfo := []byte("A")
-	p1, _ := new(big.Int).SetString("340366771288285996084147479119611242442614345594997750117006424456709538181213174956531242637348887020939489028407223567703089221775929476782718731241099422906757248077561707495116704707032100273066634958903193593316620328414148810945508298178558199690098617229620146557290778760832502595754641527561508212399", 10)
-	q1, _ := new(big.Int).SetString("342210008150736860849172031711164446089742451413085875179968626169110229543810442993722803323695011123398437631091572923680081443255606910343772878832257779626343789749157295053728686888061039308352407604712625787390738281942368398061709210466176074618563526725844303576439528711252290452332401583658026307763", 10)
-	p2, _ := new(big.Int).SetString("329524328382249319148628764796320840508305153692559642630478952397584014941151457067313849661756427706541392128829569820164488391545929472029591649023899042666372790978994596974957278845545627776319877812580448938383736549723272736985163607971865240447724733248007543186955586338718161415287240720736660379027", 10)
-	q2, _ := new(big.Int).SetString("303257730957335372508990468184467952824893660405502046275411179022975791596082369116018636137081456229414107333744883072972870435672759889937021604516341631483943268195146188840571806143131404069249083788746474292239549553036812654888452038110307817556272081492401956345059506919164252213689045814591109663647", 10)
-	paillierKeyA, err := paillier.NewPaillierWithGivenPrimes(p1, q1)
-	Expect(err).Should(BeNil())
-	paillierKeyB, err := paillier.NewPaillierWithGivenPrimes(p2, q2)
-	Expect(err).Should(BeNil())
-	pedA, err := paillierKeyA.NewPedersenParameterByPaillier()
-	Expect(err).Should(BeNil())
-	pedB, err := paillierKeyB.NewPedersenParameterByPaillier()
-	Expect(err).Should(BeNil())
-
-	paillierKey := []*paillier.Paillier{
-		paillierKeyA,
-		paillierKeyB,
-	}
-	partialPubKey := make(map[string]*pt.ECPoint)
-	partialPubKey[tss.GetTestID(0)] = pt.ScalarBaseMult(curve, shares[0])
-	partialPubKey[tss.GetTestID(1)] = pt.ScalarBaseMult(curve, shares[1])
-	allPed := make(map[string]*paillierzkproof.PederssenOpenParameter)
-	allPed[tss.GetTestID(0)] = pedA.PedersenOpenParameter
-	allPed[tss.GetTestID(1)] = pedB.PedersenOpenParameter
-
-	for i := 0; i < lens; i++ {
-		id := tss.GetTestID(i)
-		pm := tss.NewTestPeerManager(i, lens)
-		pm.Set(signsMain)
-		peerManagers[i] = pm
-		listeners[id] = new(mocks.StateChangedListener)
-		var err error
-		signs[id], err = NewSign(threshold, ssidInfo, shares[i], publicKey, partialPubKey, paillierKey[i], allPed, bks, msg, peerManagers[i], listeners[id])
-		Expect(err).Should(BeNil())
-		signsMain[id] = signs[id]
-		r, err := signs[id].GetResult()
-		Expect(r).Should(BeNil())
-		Expect(err).Should(Equal(tss.ErrNotReady))
-	}
-	return signs, bks, listeners
-}

@@ -38,6 +38,13 @@ type peer struct {
 	round2Data *round2Data
 	round3Data *round3Data
 	round4Data *round4Data
+
+	// Digest-barrier cross-check fields (set when Round*Digest is accepted).
+	digestKCiphertext     []byte
+	digestGammaCiphertext []byte
+	digestGamma           *pt.ECPoint
+	digestDelta           string
+	digestBigDelta        *pt.ECPoint
 }
 
 func newPeer(id string, ssid []byte, bk *birkhoffinterpolation.BkParameter, bkcoefficient *big.Int, para *zkpaillier.PederssenOpenParameter, partialPubKey *pt.ECPoint) *peer {

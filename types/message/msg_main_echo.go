@@ -51,6 +51,8 @@ type EchoMsgMain struct {
 	echoMsgs map[types.MessageType]map[string]*echoMessage
 
 	marshalFunc func(m proto.Message) ([]byte, error)
+	// onConflict is invoked with the original message author id when echo hashes diverge.
+	onConflict func(authorID string)
 }
 
 type echoMessage struct {
@@ -72,6 +74,14 @@ func NewEchoMsgMain(next types.MessageMain, pm types.PeerManager) *EchoMsgMain {
 			return proto.MarshalOptions{Deterministic: true}.Marshal(m)
 		},
 	}
+}
+
+// SetOnConflict registers a callback for echo equivocation (ErrDifferentHash).
+// authorID is the GetId() of the conflicting broadcast (digest/message author).
+func (t *EchoMsgMain) SetOnConflict(fn func(authorID string)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.onConflict = fn
 }
 
 // NOTE: Avoid duplicate messages from the same peer should be handled in the caller
@@ -114,6 +124,9 @@ func (t *EchoMsgMain) AddMessage(senderId string, msg types.Message) error {
 		m = echoMsg[msgId]
 		m.originalMsg = msg
 	} else if !bytes.Equal(m.hash, hash) {
+		if t.onConflict != nil {
+			t.onConflict(msgId)
+		}
 		return ErrDifferentHash
 	}
 
@@ -124,6 +137,13 @@ func (t *EchoMsgMain) AddMessage(senderId string, msg types.Message) error {
 	}
 
 	return nil
+}
+
+func (t *EchoMsgMain) Fail() error {
+	if mm, ok := t.MessageMain.(*MsgMain); ok {
+		return mm.Fail()
+	}
+	return ErrBadMsg
 }
 
 func (t *EchoMsgMain) echoHash(m EchoMessage) ([]byte, error) {

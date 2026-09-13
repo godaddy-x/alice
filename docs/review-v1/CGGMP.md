@@ -12,13 +12,15 @@ Sign 主路径与论文一致（广播一致前提下）。未发现远程 key-r
 
 **残留**：DecModQ **R1-FS**（FS Challenge 非素数）；Err1 全局 Δ blame 粒度粗（R3）；Refresh / signSix Echo 仍弱。
 
+**Pairwise**：3 轮 Sign 已落地 Round\*Digest commit–reveal（见 `PAIRWISE_ECHO.md`）；破坏性 wire（Type 重编号）。
+
 ---
 
 ## 2. 问题清单
 
 | ID | 级 | 问题 | 状态 |
 |----|-----|------|------|
-| F-01 | 高 | Echo | ✅ sign R1–R4 广播字段 + Err；⚠️ signSix / refresh |
+| F-01 | 高 | Echo | ✅ sign：全局字段 Echo + **pairwise Digest 屏障**；⚠️ signSix / refresh |
 | F-02 | 中 | Sign ped 校验 | ✅ |
 | F-03 | 中 | DKG Schnorr commitment | ✅ |
 | M-01 | 中 | Round3 Delta DoS | ✅ |
@@ -28,7 +30,28 @@ Sign 主路径与论文一致（广播一致前提下）。未发现远程 key-r
 | F-06 | 低 | msg 进 ssid | ✅ `ComputeSignSSID` |
 | F-07/F-08 | 低 | Refresh | 待修 / 集成层 |
 
-Echo R2–R4 仅 echo **全局一致字段**（R2: Γ；R3: δ+BigDelta；R4: σ）；pairwise D/F、ψ 不 echo。
+**Sign Echo / Digest（严格）**：
+
+| 轮次 | 全局 Echo | Pairwise |
+|------|-----------|----------|
+| R1 | `Round1Digest`（K/Γ + psi 表 + `table_root`） | `Round1` reveal；`GetEchoMessage=nil`；gate 验 psi digest |
+| R2 | `Round2Digest`（Γ + MtA 表） | `Round2` reveal；gate + Γ 交叉校验 |
+| R3 | `Round3Digest`（δ/Δ + ψ 表） | `Round3` reveal；gate + δ/Δ 交叉校验 |
+| R4 | Echo(σ) | 无 |
+
+`Start` 必须先 `prepareRound1Digest` 再 `MessageMain.Start`，避免 Finalize 时空 `pendingRound1`。
+
+**问责增强（2026-09-12 审计补齐）**：
+
+| 事件 | 行为 |
+|------|------|
+| Digest 屏障超时 | `DigestBarrierHandler` + `ErrDigestTimeout`；`OnDigestTimeout` → blame 未发 digest 的对端 |
+| `gateEdgeDigest` store 缺失 | blame 发送方 + `ErrDigestBarrier` |
+| ZK 验证失败（R1 Psi / R2 AffG·Log* / R3 BigDelta·Psidoublepai） | blame 对应 Round 消息发送方 |
+| 多次 blame | `storeBlamedPeers` **并集合并**（sign / signSix） |
+| Echo hash 冲突 | `SetOnConflict` → blame digest 作者 |
+
+集成层应调用 `Sign.SetAbortTimeout`（与 `MsgMain` 一致）；详见 `PAIRWISE_ECHO.md` §2。
 
 ---
 
@@ -100,7 +123,9 @@ DecModQ = **自证/自曝**（本地密文 ↔ 广播 \(x\)）。指责上游 Mt
 | DecModQ | `crypto/zkproof/paillier/dec_modq.go` |
 | Lift / PublicX / 入口 | `cggmp/err_paillier.go`、`utils.go` |
 | Err / Blame | `sign/err_abort.go`、`err_process.go`、`err_helpers.go` |
-| Echo | `sign/message.go` |
+| Echo / Digest | `sign/message.go`、`digest_handlers.go`、`pairwise_digest.go`、`pairwise_store.go` |
+| Digest 超时 | `types/message/abort_handler.go`（`DigestBarrierHandler`）、`msg_main.go`（`ErrDigestTimeout`） |
+| 攻击问责单测 | `sign/pairwise_attack_test.go`、`types/message/digest_timeout_test.go` |
 
 ```bash
 go test ./crypto/zkproof/paillier/ ./crypto/tss/ecdsa/cggmp/ \
@@ -117,3 +142,7 @@ go test ./crypto/tss/ecdsa/cggmp/sign/ -bench=MatchDecModQMaskEnum8 -benchmem
 | 2026-09-12 | Scheme A′、Echo R2–R4、入口断言、R1 备忘 |
 | 2026-09-12 | 外部审查：`|z1|`/Modulo Gap 确认、Blame、R1-FS |
 | 2026-09-12 | 三份 CGGMP 文档合并为本文件 |
+| 2026-09-12 | Pairwise Digest 严格版落地（R1–R3 屏障 + Err store 绑定） |
+| 2026-09-12 | Err H_edge 再哈希、Echo conflict blame、digest DST v3 长度前缀 |
+| 2026-09-12 | 审计补齐：digest 超时 blame、ZK 失败 blame、`storeBlamedPeers` 并集、gate 缺表 blame |
+| 2026-09-12 | 攻击问责单测（equivocation/echo conflict/Err H_edge）；死代码清理 |

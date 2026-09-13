@@ -67,6 +67,11 @@ func (p *round3Handler) ProcessErr1Msg(msgs []*Message) (map[string]struct{}, er
 			errPeers[senderID] = struct{}{}
 			continue
 		}
+		// Strict: Err D/F must bind to the Echo-committed Round2 pairwise digest.
+		if !p.sessionRound2MatchesDigest(senderID) {
+			errPeers[senderID] = struct{}{}
+			continue
+		}
 		if !peerKeysMatch(expectedErrComponentIDs(selfID, senderID, p.peers), body.Peers) {
 			errPeers[senderID] = struct{}{}
 			continue
@@ -191,7 +196,8 @@ func (p *round4Handler) ProcessErr2Msg(msgs []*Message) (map[string]struct{}, er
 		if entry.DecModQ == nil || entry.DecModQKm == nil ||
 			!ciphertextEqBytes(entry.D, sender.round1Data.Dhat) ||
 			!ciphertextEqInt(entry.F, sender.round2Data.fhat) ||
-			!peerKeysMatch(expectedErrComponentIDs(selfID, senderID, p.peers), body.Peers) {
+			!peerKeysMatch(expectedErrComponentIDs(selfID, senderID, p.peers), body.Peers) ||
+			!p.sessionRound2MatchesDigest(senderID) {
 			errPeers[senderID] = struct{}{}
 			continue
 		}

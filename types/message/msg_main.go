@@ -30,6 +30,7 @@ var (
 	ErrInvalidStateTransition = errors.New("invalid state transition")
 	ErrDupMsg                 = errors.New("duplicate message")
 	ErrAbortTimeout           = errors.New("abort message collection timed out")
+	ErrDigestTimeout          = errors.New("pairwise digest barrier timed out")
 )
 
 type MsgMain struct {
@@ -55,6 +56,16 @@ func NewMsgMain(id string, peerNum uint32, listener types.StateChangedListener, 
 		currentHandler: initHandler,
 		listener:       listener,
 	}
+}
+
+// Fail transitions the session to StateFailed without running the message loop.
+func (t *MsgMain) Fail() error {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	if t.isInFinalState() {
+		return ErrInvalidStateTransition
+	}
+	return t.setState(types.StateFailed)
 }
 
 // SetAbortTimeout limits how long an AbortCollectHandler waits for peer Err messages.
@@ -230,13 +241,21 @@ func (t *MsgMain) popMessage(ctx context.Context, handler types.Handler, msgType
 	popCtx := ctx
 	cancel := func() {}
 	abortTimed := false
+	digestTimed := false
 	t.lock.RLock()
 	timeout := t.abortTimeout
 	t.lock.RUnlock()
 	if timeout > 0 {
-		if ac, ok := handler.(AbortCollectHandler); ok && ac.AbortCollecting() {
+		switch h := handler.(type) {
+		case DigestBarrierHandler:
+			_ = h
 			popCtx, cancel = context.WithTimeout(ctx, timeout)
-			abortTimed = true
+			digestTimed = true
+		case AbortCollectHandler:
+			if h.AbortCollecting() {
+				popCtx, cancel = context.WithTimeout(ctx, timeout)
+				abortTimed = true
+			}
 		}
 	}
 	defer cancel()
@@ -254,8 +273,16 @@ func (t *MsgMain) popMessage(ctx context.Context, handler types.Handler, msgType
 		msg, err = t.msgChs.Pop(popCtx, msgType)
 	}
 	if err != nil {
-		if abortTimed && errors.Is(err, context.DeadlineExceeded) {
-			return nil, ErrAbortTimeout
+		if errors.Is(err, context.DeadlineExceeded) {
+			if digestTimed {
+				if dth, ok := handler.(DigestBarrierHandler); ok {
+					dth.OnDigestTimeout()
+				}
+				return nil, ErrDigestTimeout
+			}
+			if abortTimed {
+				return nil, ErrAbortTimeout
+			}
 		}
 		return nil, err
 	}

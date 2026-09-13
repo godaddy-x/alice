@@ -125,15 +125,8 @@ func newRound1Handler(threshold uint32, ssid []byte, share *big.Int, ySecret *bi
 		return nil, cggmp.ErrTooManyPeersForIA
 	}
 	ysFromPartialPubKey := make([]*pt.ECPoint, len(bkss))
-	ysFromPartialPubKey[0] = partialPubKey[selfId]
-	j := 1
-	for id, bk := range bks {
-		if id == selfId {
-			continue
-		}
-		_ = bk
-		ysFromPartialPubKey[j] = partialPubKey[id]
-		j++
+	for i, id := range ids {
+		ysFromPartialPubKey[i] = partialPubKey[id]
 	}
 	if err := bkss.ValidatePublicKey(ysFromPartialPubKey, threshold, pubKey); err != nil {
 		return nil, err
