@@ -10,7 +10,7 @@
 | # | 功能点 | 改造内容 | 关键文件 |
 |---|--------|----------|----------|
 | P1 | **R1–R3 Digest 双屏障** | 每轮 Commit（Digest Echo）→ Reveal（pairwise gate）；Reveal 不 Echo | `digest_handlers.go` |
-| P2 | **Pairwise 边哈希** | BLAKE2b v3 + 长度前缀；R2 canon 不含 Γ；`table_root` 双承诺 | `pairwise_digest.go` |
+| P2 | **Pairwise 边哈希** | BLAKE2b v3 + 长度前缀；R2 canon 不含 Γ；`table_root` 双承诺 | `crypto/tss/pairwise` · `pairwise_digest.go` |
 | P3 | **Digest 表完备性** | 缺/多/重复 peer、错 digest 长、错 root → blame 作者 | `ValidateDigestTable` |
 | P4 | **Reveal 交叉校验** | R1 K/Γ；R2 Γ；R3 δ/Δ 与 Digest 头一致后再 ZK | `round_1/2/3.go` |
 | P5 | **Digest 屏障 gate** | store 无 entry → `ErrDigestBarrier` blame **reveal 发送方** | `gateEdgeDigest` |
@@ -47,7 +47,7 @@ R3Digest(Echo) ──► Round3(gate) ──► [δ OK→Round4 | δ fail→Err1
 | 改 payload / peer_id → digest 变 | `edgeDigest`, `Round*PairwiseDigest` | 32B BLAKE2b | `TestEdgeDigestStableAndSensitive`, `TestRound2PairwiseDigestExcludesGamma` |
 | 表缺 peer / 重复 / 未知 / digest≠32B | `ValidateDigestTable` | 拒收 + blame 表作者 | `TestValidateDigestTable*`, `TestAcceptDigestTableBlamesIncomplete3Party` |
 | `table_root` 与重算不符 | `commitDigestTable` / accept | `ErrDigestTableRoot` | `TestValidateDigestTable` badRoot |
-| store 读写 | `pairwise_store.go` | 按 round/sender/recipient 深拷贝 | `TestPairwiseDigestStoreGetMiss`（间接全 suite） |
+| store 读写 | `crypto/tss/pairwise/store.go` · sign 薄封装 | 按 round/sender/recipient 深拷贝 | `TestPairwiseDigestStoreGetMiss`（间接全 suite） |
 
 ### 2.2 Round1 Digest → Round1 Reveal
 

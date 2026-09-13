@@ -9,6 +9,7 @@ import (
 	"github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types/message"
 	"github.com/getamis/sirius/log"
+	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 )
 
 func TestRound1CiphertextCrossCheckBlamesSender(t *testing.T) {
@@ -36,7 +37,7 @@ func TestRound1CiphertextCrossCheckBlamesSender(t *testing.T) {
 		peers:         map[string]*peer{sender: peerNode},
 		peerManager:   &staticPM{self: self},
 		own:           &peer{para: errPedZKA},
-		onBlamedPeers: sign.storeBlamedPeers,
+		onBlame: sign.storeBlame,
 	}
 	msg := &Message{
 		Id:   sender,
@@ -54,7 +55,7 @@ func TestRound1CiphertextCrossCheckBlamesSender(t *testing.T) {
 		t.Fatalf("want mismatch, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -97,7 +98,7 @@ func TestRound2GammaCrossCheckBlamesSender(t *testing.T) {
 			digestStore:   store,
 			peers:         map[string]*peer{sender: peerNode},
 			peerManager:   &staticPM{self: self},
-			onBlamedPeers: sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	msg := &Message{
@@ -118,7 +119,7 @@ func TestRound2GammaCrossCheckBlamesSender(t *testing.T) {
 		t.Fatalf("want mismatch, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -160,7 +161,7 @@ func TestRound3DeltaCrossCheckBlamesSender(t *testing.T) {
 				peerManager:   &staticPM{self: self},
 				own:           &peer{para: errPedZKA},
 				sumGamma:      errTestG,
-				onBlamedPeers: sign.storeBlamedPeers,
+				onBlame: sign.storeBlame,
 			},
 		},
 	}
@@ -180,7 +181,7 @@ func TestRound3DeltaCrossCheckBlamesSender(t *testing.T) {
 		t.Fatalf("want mismatch, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -191,7 +192,7 @@ func TestEchoConflictRound2DigestBlamesAuthor(t *testing.T) {
 	var blamed string
 	sign := &Sign{}
 	onConflict := func(authorID string) {
-		sign.storeBlamedPeers(map[string]struct{}{authorID: {}})
+		sign.storeBlame(cggmp.BlameContributionFromConfirmed(map[string]struct{}{authorID: {}}))
 		blamed = authorID
 	}
 
@@ -217,10 +218,10 @@ func TestEchoConflictRound2DigestBlamesAuthor(t *testing.T) {
 		t.Fatalf("want blame %s, got %q", author, blamed)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[author]
+	_, ok := sign.blameUnion()[author]
 	sign.blamedMu.RUnlock()
 	if !ok {
-		t.Fatal("storeBlamedPeers should record echo author")
+		t.Fatal("storeBlame should record echo author")
 	}
 }
 
@@ -228,7 +229,7 @@ func TestEchoConflictRound3DigestBlamesAuthor(t *testing.T) {
 	var blamed string
 	sign := &Sign{}
 	onConflict := func(authorID string) {
-		sign.storeBlamedPeers(map[string]struct{}{authorID: {}})
+		sign.storeBlame(cggmp.BlameContributionFromConfirmed(map[string]struct{}{authorID: {}}))
 		blamed = authorID
 	}
 
@@ -254,9 +255,9 @@ func TestEchoConflictRound3DigestBlamesAuthor(t *testing.T) {
 		t.Fatalf("want blame %s, got %q", author, blamed)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[author]
+	_, ok := sign.blameUnion()[author]
 	sign.blamedMu.RUnlock()
 	if !ok {
-		t.Fatal("storeBlamedPeers should record echo author")
+		t.Fatal("storeBlame should record echo author")
 	}
 }

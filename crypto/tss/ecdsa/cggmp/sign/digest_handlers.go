@@ -9,6 +9,8 @@ import (
 
 	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
 	"github.com/getamis/alice/crypto/tss"
+	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
+	"github.com/getamis/alice/crypto/tss/pairwise"
 	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types"
 	"github.com/getamis/sirius/log"
@@ -18,8 +20,14 @@ import (
 var round1DigestPrepareHook func(*round1DigestHandler) error
 
 func (p *round1Handler) blameSender(id string) {
-	if p.onBlamedPeers != nil {
-		p.onBlamedPeers(map[string]struct{}{id: {}})
+	if p.onBlame != nil {
+		p.onBlame(cggmp.BlameContributionFromConfirmed(map[string]struct{}{id: {}}))
+	}
+}
+
+func (p *round1Handler) blameSuspect(id string) {
+	if p.onBlame != nil {
+		p.onBlame(cggmp.BlameContributionFromSuspect(map[string]struct{}{id: {}}))
 	}
 }
 
@@ -39,38 +47,27 @@ func (p *round1Handler) expectedPeersForSender(sender string) []string {
 	return out
 }
 
-func (p *round1Handler) acceptDigestTable(round digestRound, sender, tag string, entries []*PeerDigestEntry, root []byte) error {
-	tab, err := ValidateDigestTable(p.ssid, tag, sender, p.expectedPeersForSender(sender), entries, root)
-	if err != nil {
-		p.blameSender(sender)
-		return err
+func (p *round1Handler) digestGatekeeper() *pairwise.Gatekeeper {
+	return &pairwise.Gatekeeper{
+		DST:   pairwiseDigestDST,
+		SSID:  p.ssid,
+		Store: p.digestStore,
+		Blame: p.blameSender,
 	}
-	p.digestStore.SetFinalized(round, sender, tab)
-	return nil
+}
+
+func (p *round1Handler) acceptDigestTable(round digestRound, sender, tag string, entries []*PeerDigestEntry, root []byte) error {
+	return p.digestGatekeeper().AcceptTable(round, tag, sender, p.expectedPeersForSender(sender), cggmpEntries(entries), root)
 }
 
 func (p *round1Handler) gateEdgeDigest(round digestRound, sender, self string, compute func() ([]byte, error)) error {
-	want, ok := p.digestStore.Get(round, sender, self)
-	if !ok {
-		p.blameSender(sender)
-		return ErrDigestBarrier
-	}
-	got, err := compute()
-	if err != nil {
-		p.blameSender(sender)
-		return err
-	}
-	if !bytes.Equal(got, want) {
-		p.blameSender(sender)
-		return ErrPairwiseDigestMismatch
-	}
-	return nil
+	return p.digestGatekeeper().GateEdgeDigest(round, sender, self, compute)
 }
 
 // sessionRound2MatchesDigest re-hashes the accepted Round2 reveal against the
 // Echo-finalized digest table (strict Err / accountability binding).
 func (p *round1Handler) sessionRound2MatchesDigest(senderID string) bool {
-	if p.digestStore == nil || !p.digestStore.hasAny(digestR2) {
+	if p.digestStore == nil || !p.digestStore.HasAny(digestR2) {
 		return true
 	}
 	selfID := p.peerManager.SelfID()
@@ -97,7 +94,7 @@ func (p *round1Handler) sessionRound2MatchesDigest(senderID string) bool {
 func (p *round1Handler) blameMissingDigestSenders(msgType types.MessageType) {
 	for id, peer := range p.peers {
 		if peer.Messages[msgType] == nil {
-			p.blameSender(id)
+			p.blameSuspect(id) // IA-04: digest timeout → Suspect
 		}
 	}
 }

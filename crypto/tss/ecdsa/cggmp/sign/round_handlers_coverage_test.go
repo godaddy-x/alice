@@ -56,7 +56,7 @@ func TestRound3DigestDeltaStringMismatchBlamesSender(t *testing.T) {
 				peerManager:   &staticPM{self: self},
 				own:           &peer{para: errPedZKA, ssidWithBk: ssid},
 				sumGamma:      errTestG,
-				onBlamedPeers: sign.storeBlamedPeers,
+				onBlame: sign.storeBlame,
 			},
 		},
 	}
@@ -75,7 +75,7 @@ func TestRound3DigestDeltaStringMismatchBlamesSender(t *testing.T) {
 		t.Fatalf("want digest mismatch, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -123,7 +123,7 @@ func TestRound3DigestBigDeltaPointMismatchBlamesSender(t *testing.T) {
 				peerManager:   &staticPM{self: self},
 				own:           &peer{para: errPedZKA, ssidWithBk: ssid},
 				sumGamma:      errTestG,
-				onBlamedPeers: sign.storeBlamedPeers,
+				onBlame: sign.storeBlame,
 			},
 		},
 	}
@@ -142,7 +142,7 @@ func TestRound3DigestBigDeltaPointMismatchBlamesSender(t *testing.T) {
 		t.Fatalf("want digest mismatch, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)

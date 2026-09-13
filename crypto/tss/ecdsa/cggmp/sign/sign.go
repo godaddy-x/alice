@@ -23,6 +23,7 @@ import (
 	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
 	"github.com/getamis/alice/crypto/homo/paillier"
 	"github.com/getamis/alice/crypto/tss"
+	"github.com/getamis/alice/crypto/tss/blame"
 	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types"
@@ -38,8 +39,9 @@ type Sign struct {
 
 	abortCollector *cggmp.AbortMsgCollector[*Message]
 
-	blamedMu    sync.RWMutex
-	blamedPeers map[string]struct{}
+	blamedMu         sync.RWMutex
+	blameResult      blame.Result
+	hasBlameSnapshot bool
 }
 
 type Result struct {
@@ -56,12 +58,13 @@ func NewSign(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.ECPoint, 
 	}
 	collector := cggmp.NewAbortMsgCollector[*Message]()
 	ph.onAbortMsg = collector.Record
+	ph.ambiguousMaskPolicy = blame.SuspectAllErr
 	r1d := newRound1DigestHandler(ph)
 	sign := &Sign{
 		ph:             ph,
 		abortCollector: collector,
 	}
-	ph.onBlamedPeers = sign.storeBlamedPeers
+	ph.onBlame = sign.storeBlame
 	ms := message.NewMsgMain(peerManager.SelfID(), peerNum, listener, r1d,
 		types.MessageType(Type_Round1Digest),
 		types.MessageType(Type_Round1),
@@ -78,22 +81,31 @@ func NewSign(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.ECPoint, 
 	sign.MessageMain = cggmp.WrapEchoAbortCollect(ms, peerManager, collector, func(m *Message) bool {
 		return m.Type == Type_Err1 || m.Type == Type_Err2
 	}, func(authorID string) {
-		sign.storeBlamedPeers(map[string]struct{}{authorID: {}})
+		sign.storeBlame(cggmp.BlameContributionFromConfirmed(map[string]struct{}{authorID: {}}))
 	})
 	sign.r1d = r1d
 	return sign, nil
 }
 
-func (d *Sign) storeBlamedPeers(peers map[string]struct{}) {
+func (d *Sign) storeBlame(c cggmp.BlameContribution) {
 	d.blamedMu.Lock()
 	defer d.blamedMu.Unlock()
-	if d.blamedPeers == nil {
-		d.blamedPeers = cggmp.CopyBlamedMap(peers)
+	d.blameResult.Merge(c)
+	d.hasBlameSnapshot = true
+}
+
+// SetAmbiguousMaskPolicy sets IA-01 multi-mask policy (default SuspectAllErr).
+// ConfirmAllErr is remapped to SuspectAllErr in production builds
+// (see blame.ResolvePolicy; use -tags alice_ia_debug to honor it).
+func (d *Sign) SetAmbiguousMaskPolicy(p cggmp.AmbiguousMaskPolicy) {
+	if d.ph == nil {
 		return
 	}
-	for id := range peers {
-		d.blamedPeers[id] = struct{}{}
+	resolved := blame.ResolvePolicy(p)
+	if p == blame.ConfirmAllErr && resolved != p {
+		log.Warn("ConfirmAllErr not allowed in production build; using SuspectAllErr")
 	}
+	d.ph.ambiguousMaskPolicy = resolved
 }
 
 // SetAbortTimeout configures digest-barrier and abort-collection timeouts on the inner MsgMain.
@@ -103,15 +115,17 @@ func (d *Sign) SetAbortTimeout(dur time.Duration) {
 	}
 }
 
-// GetBlamedPeers returns peers identified during the in-protocol abort phase.
-// Only valid after StateFailed. Falls back to offline analysis of collected Err messages when needed.
-func (d *Sign) GetBlamedPeers() (map[string]struct{}, error) {
+// GetBlameResult returns Confirmed vs Suspect peers (StateFailed only).
+func (d *Sign) GetBlameResult() (cggmp.BlameResult, error) {
 	if d.GetState() != types.StateFailed {
-		return nil, ErrBlamedPeersNotReady
+		return cggmp.BlameResult{}, ErrBlamedPeersNotReady
 	}
 	d.blamedMu.RLock()
-	if d.blamedPeers != nil {
-		out := cggmp.CopyBlamedMap(d.blamedPeers)
+	if d.hasBlameSnapshot {
+		out := cggmp.BlameResult{
+			Confirmed: blame.CopyMap(d.blameResult.Confirmed),
+			Suspect:   blame.CopyMap(d.blameResult.Suspect),
+		}
 		d.blamedMu.RUnlock()
 		return out, nil
 	}
@@ -119,20 +133,55 @@ func (d *Sign) GetBlamedPeers() (map[string]struct{}, error) {
 
 	msgs := d.abortCollector.Snapshot()
 	if len(msgs) == 0 {
-		return map[string]struct{}{}, nil
+		return cggmp.BlameResult{Confirmed: map[string]struct{}{}, Suspect: map[string]struct{}{}}, nil
 	}
 	h := d.GetHandler()
+	var contrib blame.Contribution
+	var err error
 	switch rh := h.(type) {
 	case *err1Handler:
-		return rh.ProcessErr1Msg(msgs)
+		contrib, err = rh.ProcessErr1Msg(msgs)
 	case *err2Handler:
-		return rh.ProcessErr2Msg(msgs)
+		contrib, err = rh.ProcessErr2Msg(msgs)
 	case *round3Handler:
-		return rh.ProcessErr1Msg(msgs)
+		contrib, err = rh.ProcessErr1Msg(msgs)
 	case *round4Handler:
-		return rh.ProcessErr2Msg(msgs)
+		contrib, err = rh.ProcessErr2Msg(msgs)
+	default:
+		return cggmp.BlameResult{Confirmed: map[string]struct{}{}, Suspect: map[string]struct{}{}}, nil
 	}
-	return map[string]struct{}{}, nil
+	if err != nil {
+		return cggmp.BlameResult{}, err
+	}
+	return contrib.ToResult(), nil
+}
+
+// GetConfirmedPeers returns cryptographic blame peers only.
+func (d *Sign) GetConfirmedPeers() (map[string]struct{}, error) {
+	r, err := d.GetBlameResult()
+	if err != nil {
+		return nil, err
+	}
+	return r.Confirmed, nil
+}
+
+// GetSuspectPeers returns operational-hint peers only.
+func (d *Sign) GetSuspectPeers() (map[string]struct{}, error) {
+	r, err := d.GetBlameResult()
+	if err != nil {
+		return nil, err
+	}
+	return r.Suspect, nil
+}
+
+// GetBlamedPeers returns Confirmed ∪ Suspect for compatibility.
+// Deprecated for penalty logic — use GetConfirmedPeers / GetBlameResult.
+func (d *Sign) GetBlamedPeers() (map[string]struct{}, error) {
+	r, err := d.GetBlameResult()
+	if err != nil {
+		return nil, err
+	}
+	return r.Union(), nil
 }
 
 // GetResult returns the final result: public key, share, bks (including self bk)

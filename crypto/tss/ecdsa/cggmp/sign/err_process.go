@@ -18,17 +18,21 @@ import (
 	"math/big"
 
 	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
+	"github.com/getamis/alice/crypto/tss/blame"
 	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 	"github.com/getamis/alice/types"
 )
 
-// ProcessErr1Msg verifies Err1 broadcasts and returns peers whose proofs fail (identifiable abort).
-// The caller's own Err1 message is skipped; only remote peers are verified.
-func (p *round3Handler) ProcessErr1Msg(msgs []*Message) (map[string]struct{}, error) {
+// ProcessErr1Msg verifies Err1 broadcasts and returns a BlameContribution
+// (Confirmed = cryptographic fail; Suspect = absent / global-Δ / ambiguous cohort).
+func (p *round3Handler) ProcessErr1Msg(msgs []*Message) (blame.Contribution, error) {
 	if err := cggmp.ValidateIAParticipantCount(len(p.peers) + 1); err != nil {
-		return nil, err
+		return blame.Contribution{}, err
 	}
-	errPeers := make(map[string]struct{})
+	confirmed := make(map[string]struct{})
+	suspect := make(map[string]struct{})
+	errSenders := make(map[string]struct{})
+	ambiguous := false
 	curve := p.pubKey.GetCurve()
 	curveN := curve.Params().N
 	selfID := p.peerManager.SelfID()
@@ -40,15 +44,16 @@ func (p *round3Handler) ProcessErr1Msg(msgs []*Message) (map[string]struct{}, er
 		}
 		sender, ok := p.peers[senderID]
 		if !ok {
-			continue
+			continue // ignore unknown senders (not in session)
 		}
+		errSenders[senderID] = struct{}{}
 		if sender.round3Data == nil || sender.round1Data == nil || sender.round2Data == nil {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		body := m.GetErr1()
 		if body == nil {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 
@@ -56,75 +61,82 @@ func (p *round3Handler) ProcessErr1Msg(msgs []*Message) (map[string]struct{}, er
 		kgamma := new(big.Int).SetBytes(body.KgammaCiphertext)
 		peerMsg := body.Peers[selfID]
 		if body.MulProof == nil || peerMsg == nil || peerMsg.DecModQ == nil {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		if err := body.MulProof.Verify(sender.ssidWithBk, senderN, sender.round1Data.kCiphertext, sender.round1Data.gammaCiphertext, kgamma, curveN); err != nil {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		if !ciphertextEqBytes(peerMsg.D, sender.round1Data.D) || !ciphertextEqInt(peerMsg.F, sender.round2Data.f) {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
-		// Strict: Err D/F must bind to the Echo-committed Round2 pairwise digest.
 		if !p.sessionRound2MatchesDigest(senderID) {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		if !peerKeysMatch(expectedErrComponentIDs(selfID, senderID, p.peers), body.Peers) {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		components, ok := errProductComponents(body.Peers)
 		if !ok {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		nSquare := new(big.Int).Mul(senderN, senderN)
 		rawC, ok := reconstructPaillierProduct(kgamma, nSquare, components)
 		if !ok {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		product, ok := parsePeerProductCiphertext(peerMsg.ProductCiphertext)
 		if !ok || product.Cmp(rawC) != 0 {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		peerNs := errPeerPaillierNs(selfID, p.paillierKey.GetN(), p.peers, body.Peers)
-		if len(peerNs) != len(body.Peers) ||
-			!matchDecModQWithBetaCorrection(peerMsg.DecModQ, sender.ssidWithBk, senderN, product, sender.round3Data.delta, curveN, peerNs, p.own.para) {
-			errPeers[senderID] = struct{}{}
+		if len(peerNs) != len(body.Peers) {
+			confirmed[senderID] = struct{}{}
+			continue
+		}
+		switch matchDecModQWithBetaCorrection(peerMsg.DecModQ, sender.ssidWithBk, senderN, product, sender.round3Data.delta, curveN, peerNs, p.own.para) {
+		case blame.MaskNone:
+			confirmed[senderID] = struct{}{}
+		case blame.MaskAmbiguous:
+			ambiguous = true
+		case blame.MaskUnique:
+			// self-consistent; no blame on sender
 		}
 	}
 
-	if len(errPeers) == 0 && len(msgs) > 0 {
+	if len(confirmed) == 0 && !ambiguous && len(msgs) > 0 {
 		sumDelta := new(big.Int).Set(p.delta)
 		bigDelta := p.BigDelta.Copy()
 		deltaOK := true
 		for id, peer := range p.peers {
 			if peer.round3Data == nil {
-				errPeers[id] = struct{}{}
+				confirmed[id] = struct{}{}
 				deltaOK = false
 				continue
 			}
 			sumDelta.Add(sumDelta, peer.round3Data.delta)
 			round3Msg := peer.GetMessage(types.MessageType(Type_Round3))
 			if round3Msg == nil {
-				errPeers[id] = struct{}{}
+				confirmed[id] = struct{}{}
 				deltaOK = false
 				continue
 			}
 			round3 := getMessage(round3Msg).GetRound3()
 			if round3 == nil {
-				errPeers[id] = struct{}{}
+				confirmed[id] = struct{}{}
 				deltaOK = false
 				continue
 			}
 			Delta, err := round3.BigDelta.ToPoint()
 			if err != nil {
-				errPeers[id] = struct{}{}
+				confirmed[id] = struct{}{}
 				deltaOK = false
 				continue
 			}
@@ -139,26 +151,27 @@ func (p *round3Handler) ProcessErr1Msg(msgs []*Message) (map[string]struct{}, er
 			sumDelta.Mod(sumDelta, curveN)
 			gDelta := pt.NewBase(curve).ScalarMult(sumDelta)
 			if !gDelta.Equal(bigDelta) {
-				for _, m := range msgs {
-					if m.GetId() != selfID {
-						errPeers[m.GetId()] = struct{}{}
-					}
+				// Global Δ mismatch: Suspect all Err senders (IA-03 over-blame).
+				for id := range errSenders {
+					suspect[id] = struct{}{}
 				}
 			}
 		}
 	}
 
-	blameAbsentSenders(selfID, p.peers, msgs, errPeers)
-	return errPeers, nil
+	blameAbsentSenders(selfID, p.peers, msgs, suspect)
+	return finalizeErrBlame(p.ambiguousMaskPolicy, errSenders, confirmed, suspect, ambiguous), nil
 }
 
-// ProcessErr2Msg verifies Err2 broadcasts and returns peers whose proofs fail.
-// The caller's own Err2 message is skipped; only remote peers are verified.
-func (p *round4Handler) ProcessErr2Msg(msgs []*Message) (map[string]struct{}, error) {
+// ProcessErr2Msg verifies Err2 broadcasts and returns a BlameContribution.
+func (p *round4Handler) ProcessErr2Msg(msgs []*Message) (blame.Contribution, error) {
 	if err := cggmp.ValidateIAParticipantCount(len(p.peers) + 1); err != nil {
-		return nil, err
+		return blame.Contribution{}, err
 	}
-	errPeers := make(map[string]struct{}, len(msgs))
+	confirmed := make(map[string]struct{}, len(msgs))
+	suspect := make(map[string]struct{})
+	errSenders := make(map[string]struct{})
+	ambiguous := false
 	selfID := p.peerManager.SelfID()
 
 	for _, m := range msgs {
@@ -168,10 +181,11 @@ func (p *round4Handler) ProcessErr2Msg(msgs []*Message) (map[string]struct{}, er
 		}
 		sender, ok := p.peers[senderID]
 		if !ok {
-			continue
+			continue // ignore unknown senders (not in session)
 		}
+		errSenders[senderID] = struct{}{}
 		if sender.round4Data == nil || sender.round1Data == nil || sender.round1Data.kCiphertext == nil || sender.round2Data == nil {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		body := m.GetErr2()
@@ -180,7 +194,7 @@ func (p *round4Handler) ProcessErr2Msg(msgs []*Message) (map[string]struct{}, er
 			entry = body.Peers[selfID]
 		}
 		if body == nil || entry == nil || p.R == nil || p.msg == nil {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 
@@ -190,7 +204,7 @@ func (p *round4Handler) ProcessErr2Msg(msgs []*Message) (map[string]struct{}, er
 
 		if entry.MulStarProof == nil ||
 			entry.MulStarProof.Verify(parameter, sender.ssidWithBk, senderN, sender.round1Data.kCiphertext, dciphertext, p.own.para, bkPartial) != nil {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		if entry.DecModQ == nil || entry.DecModQKm == nil ||
@@ -198,38 +212,46 @@ func (p *round4Handler) ProcessErr2Msg(msgs []*Message) (map[string]struct{}, er
 			!ciphertextEqInt(entry.F, sender.round2Data.fhat) ||
 			!peerKeysMatch(expectedErrComponentIDs(selfID, senderID, p.peers), body.Peers) ||
 			!p.sessionRound2MatchesDigest(senderID) {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		components, ok := errProductComponents(body.Peers)
 		nSquare := new(big.Int).Mul(senderN, senderN)
 		inner, recOK := reconstructPaillierProduct(dciphertext, nSquare, components)
 		if !ok || !recOK {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		product, prodOK := parsePeerProductCiphertext(entry.ProductCiphertext)
 		if !prodOK || product.Cmp(inner) != 0 {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 			continue
 		}
 		chi, chiOK := parseErr2Chi(body.GetChi(), p.pubKey.GetCurve().Params().N)
 		peerNs := errPeerPaillierNs(selfID, p.paillierKey.GetN(), p.peers, body.Peers)
 		curveN := p.pubKey.GetCurve().Params().N
-		if !chiOK || len(peerNs) != len(body.Peers) ||
-			!matchDecModQWithBetaCorrection(entry.DecModQ, sender.ssidWithBk, senderN, product, chi, curveN, peerNs, p.own.para) {
-			errPeers[senderID] = struct{}{}
+		if !chiOK || len(peerNs) != len(body.Peers) {
+			confirmed[senderID] = struct{}{}
 			continue
+		}
+		switch matchDecModQWithBetaCorrection(entry.DecModQ, sender.ssidWithBk, senderN, product, chi, curveN, peerNs, p.own.para) {
+		case blame.MaskNone:
+			confirmed[senderID] = struct{}{}
+			continue
+		case blame.MaskAmbiguous:
+			ambiguous = true
+		case blame.MaskUnique:
+			// continue to DecModQKm
 		}
 		km := new(big.Int).Exp(sender.round1Data.kCiphertext, new(big.Int).SetBytes(p.msg), nSquare)
 		xKm := new(big.Int).Mul(p.R.GetX(), chi)
 		xKm.Sub(sender.round4Data.sigma, xKm)
 		xKm.Mod(xKm, curveN)
 		if err := entry.DecModQKm.VerifyModQ(parameter, sender.ssidWithBk, senderN, km, xKm, p.own.para); err != nil {
-			errPeers[senderID] = struct{}{}
+			confirmed[senderID] = struct{}{}
 		}
 	}
 
-	blameAbsentSenders(selfID, p.peers, msgs, errPeers)
-	return errPeers, nil
+	blameAbsentSenders(selfID, p.peers, msgs, suspect)
+	return finalizeErrBlame(p.ambiguousMaskPolicy, errSenders, confirmed, suspect, ambiguous), nil
 }

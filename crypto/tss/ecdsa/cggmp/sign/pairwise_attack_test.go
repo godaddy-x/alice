@@ -8,6 +8,7 @@ import (
 	"github.com/getamis/alice/crypto/tss"
 	"github.com/getamis/alice/types/message"
 	"github.com/getamis/sirius/log"
+	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 )
 
 func TestSessionRound2MatchesDigest(t *testing.T) {
@@ -122,7 +123,7 @@ func TestRound2EquivocationBlamesSender(t *testing.T) {
 			digestStore:   store,
 			peers:         map[string]*peer{sender: {Peer: message.NewPeer(sender)}},
 			peerManager:   &staticPM{self: self},
-			onBlamedPeers: sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	err = h.HandleMessage(log.New(), msg)
@@ -130,7 +131,7 @@ func TestRound2EquivocationBlamesSender(t *testing.T) {
 		t.Fatalf("want mismatch, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -141,7 +142,7 @@ func TestEchoConflictRound1DigestBlamesAuthor(t *testing.T) {
 	var blamed string
 	sign := &Sign{}
 	onConflict := func(authorID string) {
-		sign.storeBlamedPeers(map[string]struct{}{authorID: {}})
+		sign.storeBlame(cggmp.BlameContributionFromConfirmed(map[string]struct{}{authorID: {}}))
 		blamed = authorID
 	}
 
@@ -165,9 +166,9 @@ func TestEchoConflictRound1DigestBlamesAuthor(t *testing.T) {
 		t.Fatalf("want blame %s, got %q", author, blamed)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[author]
+	_, ok := sign.blameUnion()[author]
 	sign.blamedMu.RUnlock()
 	if !ok {
-		t.Fatal("storeBlamedPeers should record echo author")
+		t.Fatal("storeBlame should record echo author")
 	}
 }

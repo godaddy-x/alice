@@ -19,6 +19,8 @@ import (
 
 	"github.com/getamis/alice/crypto/ecpointgrouplaw"
 	"github.com/getamis/alice/crypto/elliptic"
+	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
+	"github.com/getamis/alice/crypto/tss/pairwise"
 	"github.com/getamis/alice/types"
 	"github.com/getamis/sirius/log"
 )
@@ -62,6 +64,13 @@ func (p *round2) HandleMessage(logger log.Logger, message types.Message) error {
 		logger.Warn("Peer not found")
 		return ErrPeerNotFound
 	}
+	selfID := p.peerManager.SelfID()
+	zi := msg.GetRound2().GetZi()
+	if err := p.gateEdgeDigest(pairwise.Round2, id, selfID, func() ([]byte, error) {
+		return Round2PairwiseDigest(p.ssid, id, selfID, zi), nil
+	}); err != nil {
+		return err
+	}
 	return peer.AddMessage(msg)
 }
 
@@ -95,6 +104,9 @@ func (p *round2) Finalize(logger log.Logger) (types.Handler, error) {
 		if !comparePart.Equal(ziG) {
 			logger.Debug("Inconsistent ziG", "peer", node.Id, "comparePart", comparePart, "ziG", ziG)
 			p.blamedPeer = node.Id
+			if p.onBlame != nil {
+				p.onBlame(cggmp.BlameContributionFromConfirmed(map[string]struct{}{node.Id: {}}))
+			}
 			return nil, ErrVerifyFailure
 		}
 	}

@@ -155,7 +155,7 @@ var _ = Describe("Refresh", func() {
 		errMsg2 := &Message{Id: ID2, Type: Type_Err1, Body: p2Err.err1Msg.Body}
 		blamed, err := p1Err.ProcessErr1Msg([]*Message{errMsg2})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 	})
 
 	It("ProcessErr2 rejects peer when Round2 digest mismatches store", func() {
@@ -217,6 +217,6 @@ var _ = Describe("Refresh", func() {
 		errMsg2 := &Message{Id: ID2, Type: Type_Err2, Body: p2Err.err2Msg.Body}
 		blamed, err := p1Err.ProcessErr2Msg([]*Message{errMsg2})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 	})
 })

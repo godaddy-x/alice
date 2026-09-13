@@ -25,7 +25,7 @@ func TestProcessErr1MsgAggregateRound3ToPointError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected local peer blamed when aggregate BigDelta ToPoint fails")
 	}
 }
@@ -42,7 +42,7 @@ func TestProcessErr1MsgAggregateRound3NilBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(2)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(2)]; !ok {
 		t.Fatal("expected local peer blamed when round3 body is nil")
 	}
 }
@@ -58,7 +58,7 @@ func TestProcessErr1MsgThreePartyBlamesNilErr1Body(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for nil err1 body")
 	}
 }
@@ -72,7 +72,7 @@ func TestProcessErr2MsgThreePartyBlamesBadChi(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for bad chi")
 	}
 }
@@ -85,7 +85,7 @@ func TestProcessErr2MsgThreePartySkipsSelf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blamed) != 0 {
+	if len(blamed.Union()) != 0 {
 		t.Fatalf("expected no blame when only remotes are valid, got %v", blamed)
 	}
 }

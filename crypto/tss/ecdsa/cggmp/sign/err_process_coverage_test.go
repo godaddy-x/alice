@@ -42,7 +42,7 @@ func TestProcessErr1MsgAcceptsValidRemote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blamed) != 0 {
+	if len(blamed.Union()) != 0 {
 		t.Fatalf("expected no blame, got %v", blamed)
 	}
 }
@@ -53,7 +53,7 @@ func TestProcessErr1MsgBlamesAbsentSender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected absent peer blamed")
 	}
 }
@@ -66,7 +66,7 @@ func TestProcessErr1MsgSkipsSelfAndUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blamed) != 0 {
+	if len(blamed.Union()) != 0 {
 		t.Fatalf("expected no blame, got %v", blamed)
 	}
 }
@@ -78,7 +78,7 @@ func TestProcessErr1MsgBlamesIncompletePeerState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected peer blamed for missing round3 data")
 	}
 }
@@ -90,7 +90,7 @@ func TestProcessErr1MsgBlamesNilBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected peer blamed for nil err1 body")
 	}
 }
@@ -105,7 +105,7 @@ func TestProcessErr1MsgBlamesMissingProofFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected peer blamed for missing mul proof")
 	}
 }
@@ -121,7 +121,7 @@ func TestProcessErr1MsgBlamesTamperedDF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for tampered D/F")
 	}
 }
@@ -141,7 +141,7 @@ func TestProcessErr1MsgBlamesDeltaCrossCheckFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for delta cross-check failure")
 	}
 }
@@ -174,7 +174,7 @@ func TestProcessErr2MsgAcceptsValidRemote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blamed) != 0 {
+	if len(blamed.Union()) != 0 {
 		t.Fatalf("expected no blame, got %v", blamed)
 	}
 }
@@ -185,7 +185,7 @@ func TestProcessErr2MsgBlamesAbsentSender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected absent peer blamed")
 	}
 }
@@ -197,7 +197,7 @@ func TestProcessErr2MsgBlamesMissingRound4Data(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected peer blamed for missing round4 data")
 	}
 }
@@ -211,7 +211,7 @@ func TestProcessErr2MsgBlamesMissingMulStar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing mul star proof")
 	}
 }
@@ -227,7 +227,7 @@ func TestProcessErr2MsgBlamesTamperedProduct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for product mismatch")
 	}
 }
@@ -243,7 +243,7 @@ func TestProcessErr2MsgBlamesBadDecModQKm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for bad DecModQKm")
 	}
 }
@@ -351,7 +351,7 @@ func TestProcessErr1MsgBlamesSessionRound2Mismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for session round2 mismatch")
 	}
 }
@@ -366,7 +366,7 @@ func TestProcessErr1MsgBlamesMulProofVerifyFail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for bad mul proof")
 	}
 }
@@ -378,7 +378,7 @@ func TestProcessErr1MsgBlamesMissingRound3Message(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing round3 message")
 	}
 }
@@ -399,7 +399,7 @@ func TestProcessErr1MsgBlamesEmptyProductComponents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[senderID]; !ok {
+	if _, ok := blamed.Union()[senderID]; !ok {
 		t.Fatal("expected sender blamed for empty product components")
 	}
 }
@@ -431,7 +431,7 @@ func TestProcessErr2MsgBlamesSessionRound2Mismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for session round2 mismatch")
 	}
 }
@@ -446,7 +446,7 @@ func TestErr1HandlerFinalizeWithoutCallback(t *testing.T) {
 	if err := eh.HandleMessage(log.New(), remote); err != nil {
 		t.Fatal(err)
 	}
-	p3.onBlamedPeers = nil
+	p3.onBlame = nil
 	_, finalizeErr := eh.Finalize(log.New())
 	if finalizeErr != ErrInvalidDelta {
 		t.Fatalf("want ErrInvalidDelta, got %v", finalizeErr)

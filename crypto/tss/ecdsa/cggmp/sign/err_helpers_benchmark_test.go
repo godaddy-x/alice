@@ -17,7 +17,7 @@ func BenchmarkMatchDecModQMaskEnum8(b *testing.B) {
 		id := string(rune('a' + i))
 		peerNs[id] = new(big.Int).Add(errPaillierKeyA.GetN(), big.NewInt(int64(i+1000)))
 	}
-	// Proof for a wrong x — every mask fails; still exercises full 256 VerifyModQ loop.
+	// Proof for a wrong x - every mask fails; still exercises full 256 VerifyModQ loop.
 	proof, err := paillierzkproof.NewDecModQMessage(
 		paillierzkproof.NewS256(), []byte("bench"), big.NewInt(1), big.NewInt(1),
 		errPaillierKeyA.GetN(), C, big.NewInt(1), errPedZKA,

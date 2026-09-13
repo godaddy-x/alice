@@ -74,8 +74,8 @@ func (p *err1Handler) Finalize(logger log.Logger) (types.Handler, error) {
 		logger.Warn("Failed to process Err1 messages", "err", err)
 		return nil, err
 	}
-	if p.onBlamedPeers != nil {
-		p.onBlamedPeers(blamed)
+	if p.onBlame != nil {
+		p.onBlame(blamed)
 	}
 	return nil, p.abortReason
 }

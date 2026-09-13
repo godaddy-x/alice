@@ -15,13 +15,19 @@
 package signer
 
 import (
+	"github.com/getamis/alice/crypto/ecpointgrouplaw"
+	"github.com/getamis/alice/crypto/tss/pairwise"
 	"github.com/getamis/alice/types"
 )
 
 func (m *Message) IsValid() bool {
 	switch m.Type {
+	case Type_Round1Digest:
+		return m.GetRound1Digest() != nil
 	case Type_Round1:
 		return m.GetRound1() != nil
+	case Type_Round2Digest:
+		return m.GetRound2Digest() != nil
 	case Type_Round2:
 		return m.GetRound2() != nil
 	}
@@ -38,14 +44,77 @@ func (m *Message) GetEchoMessage() types.Message {
 		Id:   m.Id,
 	}
 	switch m.Type {
-	case Type_Round1:
-		mm.Body = &Message_Round1{
-			Round1: &BodyRound1{
-				D: m.GetRound1().GetD(),
-				E: m.GetRound1().GetE(),
+	case Type_Round1Digest:
+		src := m.GetRound1Digest()
+		if src == nil {
+			return nil
+		}
+		mm.Body = &Message_Round1Digest{
+			Round1Digest: &Round1DigestMsg{
+				D:         cloneEcPointMsg(src.GetD()),
+				E:         cloneEcPointMsg(src.GetE()),
+				ToPeer:    clonePeerDigests(src.GetToPeer()),
+				TableRoot: cloneBytes(src.GetTableRoot()),
+			},
+		}
+		return mm
+	case Type_Round1, Type_Round2:
+		return nil
+	case Type_Round2Digest:
+		src := m.GetRound2Digest()
+		if src == nil {
+			return nil
+		}
+		mm.Body = &Message_Round2Digest{
+			Round2Digest: &Round2DigestMsg{
+				ToPeer:    clonePeerDigests(src.GetToPeer()),
+				TableRoot: cloneBytes(src.GetTableRoot()),
 			},
 		}
 		return mm
 	}
 	return nil
 }
+
+func cloneBytes(in []byte) []byte {
+	if in == nil {
+		return nil
+	}
+	return append([]byte(nil), in...)
+}
+
+func clonePeerDigests(in []*PeerDigestEntry) []*PeerDigestEntry {
+	if in == nil {
+		return nil
+	}
+	out := make([]*PeerDigestEntry, len(in))
+	for i, e := range in {
+		if e == nil {
+			continue
+		}
+		out[i] = &PeerDigestEntry{
+			PeerId: e.GetPeerId(),
+			Digest: cloneBytes(e.GetDigest()),
+		}
+	}
+	return out
+}
+
+func cloneEcPointMsg(src *ecpointgrouplaw.EcPointMessage) *ecpointgrouplaw.EcPointMessage {
+	if src == nil {
+		return nil
+	}
+	return &ecpointgrouplaw.EcPointMessage{
+		Curve: src.GetCurve(),
+		X:     cloneBytes(src.GetX()),
+		Y:     cloneBytes(src.GetY()),
+	}
+}
+
+// re-export for tests
+var (
+	ErrPairwiseDigestMismatch = pairwise.ErrPairwiseDigestMismatch
+	ErrPairwiseDigestTable    = pairwise.ErrPairwiseDigestTable
+	ErrDigestBarrier          = pairwise.ErrDigestBarrier
+	ErrDigestTableRoot        = pairwise.ErrDigestTableRoot
+)

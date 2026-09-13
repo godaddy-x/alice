@@ -102,7 +102,7 @@ var _ = Describe("HonestErr3Party", func() {
 
 		curveN := errTestPublicKey.GetCurve().Params().N
 
-		// Directed MtA: mta[i][j] = party i toward party j (i≠j).
+		// Directed MtA: mta[i][j] = party i toward party j (i?j).
 		type mtaEdge struct {
 			beta, r, count *big.Int
 			dBytes, f      *big.Int
@@ -224,10 +224,10 @@ var _ = Describe("HonestErr3Party", func() {
 			}
 			blamed, e := h.ProcessErr1Msg(others)
 			Expect(e).Should(BeNil())
-			Expect(len(blamed)).Should(BeZero())
+			Expect(len(blamed.Union())).Should(BeZero())
 		}
 
-		// Tamper party2's C toward party1 → party1 blames party2.
+		// Tamper party2's C toward party1 -> party1 blames party2.
 		tampered := &Message{Id: ID2, Type: Type_Err1, Body: handlers[1].err1Msg.Body}
 		peerMsg := tampered.GetErr1().Peers[ID1]
 		Expect(peerMsg).ShouldNot(BeNil())
@@ -235,6 +235,6 @@ var _ = Describe("HonestErr3Party", func() {
 		peerMsg.ProductCiphertext[0] ^= 0xff
 		blamed, e := handlers[0].ProcessErr1Msg([]*Message{tampered, errMsgs[2]})
 		Expect(e).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 	})
 })

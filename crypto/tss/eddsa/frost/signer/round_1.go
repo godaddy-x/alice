@@ -29,6 +29,7 @@ import (
 	"github.com/getamis/alice/crypto/homo"
 	"github.com/getamis/alice/crypto/tss/dkg"
 	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
+	"github.com/getamis/alice/crypto/tss/pairwise"
 	"github.com/getamis/alice/crypto/utils"
 	"github.com/getamis/alice/types"
 	"github.com/getamis/sirius/log"
@@ -74,6 +75,7 @@ type round1 struct {
 	share     *big.Int
 	pubKey    *ecpointgrouplaw.ECPoint
 	curveN    *big.Int
+	ssid      []byte
 
 	peerManager types.PeerManager
 	peerNum     uint32
@@ -84,14 +86,22 @@ type round1 struct {
 	e *big.Int
 	d *big.Int
 
+	D *ecpointgrouplaw.ECPoint
+	E *ecpointgrouplaw.ECPoint
+
 	round1Msg *Message
+
+	digestStore *pairwise.Store
+	onBlame     func(cggmp.BlameContribution)
+
+	pendingRound2 *Message
 
 	// Results
 	r *ecpointgrouplaw.ECPoint
 	c *big.Int
 }
 
-func newRound1(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, threshold uint32, share *big.Int, dkgResult *dkg.Result, message []byte) (*round1, error) {
+func newRound1(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, threshold uint32, share *big.Int, dkgResult *dkg.Result, message []byte, ssid []byte) (*round1, error) {
 	bks := dkgResult.Bks
 	ys := dkgResult.Ys
 	selfId := peerManager.SelfID()
@@ -163,6 +173,7 @@ func newRound1(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, t
 		share:     share,
 		pubKey:    pubKey,
 		curveN:    curveN,
+		ssid:      ssid,
 
 		ownbk: ownbk,
 
@@ -172,12 +183,14 @@ func newRound1(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, t
 
 		e:         e,
 		d:         d,
+		D:         D,
+		E:         E,
 		round1Msg: round1Msg,
+
+		digestStore: pairwise.NewStore(),
 	}
-	err = r.HandleMessage(log.New(), round1Msg)
-	if err != nil {
-		return nil, err
-	}
+	nodes[selfId].D = D
+	nodes[selfId].E = E
 	return r, nil
 }
 
@@ -207,21 +220,48 @@ func (p *round1) HandleMessage(logger log.Logger, message types.Message) error {
 		return ErrPeerNotFound
 	}
 	msgBody := msg.GetRound1()
+	selfID := p.peerManager.SelfID()
+	bkX := peer.bk.GetX().Bytes()
+	if err := p.gateEdgeDigest(pairwise.Round1, id, selfID, func() ([]byte, error) {
+		d, err := msgBody.D.ToPoint()
+		if err != nil {
+			return nil, err
+		}
+		e, err := msgBody.E.ToPoint()
+		if err != nil {
+			return nil, err
+		}
+		return Round1PairwiseDigest(p.ssid, id, selfID, bkX, d, e)
+	}); err != nil {
+		return err
+	}
 	var err error
 	peer.D, err = msgBody.D.ToPoint()
 	if err != nil {
 		logger.Debug("Failed ot ToPoint", "err", err)
+		p.blameSender(id)
 		return err
 	}
 	peer.E, err = msgBody.E.ToPoint()
 	if err != nil {
 		logger.Debug("Failed ot ToPoint", "err", err)
+		p.blameSender(id)
 		return err
 	}
+	if peer.digestD != nil && !digestPointsEqual(peer.digestD, peer.D) {
+		p.blameSender(id)
+		return pairwise.ErrPairwiseDigestMismatch
+	}
+	if peer.digestE != nil && !digestPointsEqual(peer.digestE, peer.E) {
+		p.blameSender(id)
+		return pairwise.ErrPairwiseDigestMismatch
+	}
 	if peer.D.IsIdentity() || peer.E.IsIdentity() {
+		p.blameSender(id)
 		return ErrTrivialPoint
 	}
 	if !peer.D.IsSameCurve(peer.E) {
+		p.blameSender(id)
 		return ecpointgrouplaw.ErrDifferentCurve
 	}
 
@@ -298,17 +338,10 @@ func (p *round1) Finalize(logger log.Logger) (types.Handler, error) {
 			},
 		},
 	}
-	h, err := newRound2(p)
-	if err != nil {
+	if err := p.buildRound2DigestAndBroadcast(round2Msg); err != nil {
 		return nil, err
 	}
-	err = h.HandleMessage(logger, round2Msg)
-	if err != nil {
-		logger.Debug("Failed ot AddMessage", "err", err)
-		return nil, err
-	}
-	cggmp.Broadcast(p.peerManager, round2Msg)
-	return h, nil
+	return newRound2DigestHandler(p), nil
 }
 
 func getMessage(messsage types.Message) *Message {

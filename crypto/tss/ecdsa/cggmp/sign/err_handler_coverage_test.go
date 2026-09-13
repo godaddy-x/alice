@@ -190,7 +190,7 @@ func TestRound2DigestHandleMessageInvalidTableBlames(t *testing.T) {
 			digestStore:   newPairwiseDigestStore(),
 			peers:         map[string]*peer{sender: {Peer: message.NewPeer(sender)}},
 			peerManager:   &staticPM{self: self},
-			onBlamedPeers: sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	err = h.HandleMessage(log.New(), &Message{
@@ -208,7 +208,7 @@ func TestRound2DigestHandleMessageInvalidTableBlames(t *testing.T) {
 		t.Fatalf("want table err, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)

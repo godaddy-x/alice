@@ -39,7 +39,7 @@ func TestRound1InvalidPsiVerifyBlamesSender(t *testing.T) {
 		peers:         map[string]*peer{sender: peerNode},
 		peerManager:   &staticPM{self: self},
 		own:           &peer{para: errPedZKA, ssidWithBk: ssid},
-		onBlamedPeers: sign.storeBlamedPeers,
+		onBlame: sign.storeBlame,
 	}
 	msg := &Message{
 		Id:   sender,
@@ -57,7 +57,7 @@ func TestRound1InvalidPsiVerifyBlamesSender(t *testing.T) {
 		t.Fatal("expected ZK verify error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed after invalid psi", sender)
@@ -108,7 +108,7 @@ func TestRound2InvalidPsiVerifyBlamesSender(t *testing.T) {
 			own:           &peer{para: errPedZKA, ssidWithBk: ssid},
 			paillierKey:   errPaillierKeyA,
 			kCiphertext:   kCipher,
-			onBlamedPeers: sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	r2.Gamma = gammaMsg
@@ -118,7 +118,7 @@ func TestRound2InvalidPsiVerifyBlamesSender(t *testing.T) {
 		t.Fatal("expected ZK verify error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed after invalid psi", sender)
@@ -165,7 +165,7 @@ func TestRound3InvalidPsiVerifyBlamesSender(t *testing.T) {
 				peerManager:   &staticPM{self: self},
 				own:           &peer{para: errPedZKA, ssidWithBk: ssid},
 				sumGamma:      errTestG,
-				onBlamedPeers: sign.storeBlamedPeers,
+				onBlame: sign.storeBlame,
 			},
 		},
 	}
@@ -185,7 +185,7 @@ func TestRound3InvalidPsiVerifyBlamesSender(t *testing.T) {
 		t.Fatal("expected ZK verify error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed after invalid psidoublepai", sender)

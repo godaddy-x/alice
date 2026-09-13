@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
+	"github.com/getamis/alice/crypto/tss/blame"
 	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types"
@@ -34,7 +35,7 @@ func TestGateEdgeDigestComputeErrorBlames(t *testing.T) {
 		peerManager: &staticPM{self: self},
 	}
 	var blamed string
-	h.onBlamedPeers = func(m map[string]struct{}) {
+	h.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}
@@ -55,7 +56,7 @@ func TestGateEdgeDigestComputeErrorBlames(t *testing.T) {
 }
 
 func TestBlameSenderNoCallbackDoesNotPanic(t *testing.T) {
-	h := &round1Handler{onBlamedPeers: nil}
+	h := &round1Handler{onBlame: nil}
 	h.blameSender("peer")
 }
 
@@ -159,7 +160,7 @@ func TestRound2DigestNilBodyBlamesSender(t *testing.T) {
 		},
 	}
 	var blamed string
-	h.onBlamedPeers = func(m map[string]struct{}) {
+	h.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}
@@ -192,7 +193,7 @@ func TestRound2DigestInvalidGammaBlamesSender(t *testing.T) {
 			digestStore:   newPairwiseDigestStore(),
 			peers:         map[string]*peer{sender: {Peer: message.NewPeer(sender)}},
 			peerManager:   &staticPM{self: self},
-			onBlamedPeers: sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	err := h.HandleMessage(log.New(), &Message{
@@ -210,7 +211,7 @@ func TestRound2DigestInvalidGammaBlamesSender(t *testing.T) {
 		t.Fatal("expected ToPoint error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -245,7 +246,7 @@ func TestRound3DigestNilBodyBlamesSender(t *testing.T) {
 		},
 	}
 	var blamed string
-	h.onBlamedPeers = func(m map[string]struct{}) {
+	h.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}
@@ -279,7 +280,7 @@ func TestRound3DigestInvalidBigDeltaBlamesSender(t *testing.T) {
 				digestStore:   newPairwiseDigestStore(),
 				peers:         map[string]*peer{sender: {Peer: message.NewPeer(sender)}},
 				peerManager:   &staticPM{self: self},
-				onBlamedPeers: sign.storeBlamedPeers,
+				onBlame: sign.storeBlame,
 			},
 		},
 	}
@@ -299,7 +300,7 @@ func TestRound3DigestInvalidBigDeltaBlamesSender(t *testing.T) {
 		t.Fatal("expected ToPoint error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -360,7 +361,7 @@ func TestRound1PsiEquivocationBlamesSender(t *testing.T) {
 			},
 		},
 		peerManager:   &staticPM{self: self},
-		onBlamedPeers: sign.storeBlamedPeers,
+		onBlame: sign.storeBlame,
 	}
 	err = h.HandleMessage(log.New(), &Message{
 		Id:   sender,
@@ -377,7 +378,7 @@ func TestRound1PsiEquivocationBlamesSender(t *testing.T) {
 		t.Fatalf("want mismatch, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -409,7 +410,7 @@ func TestRound1GammaCiphertextMismatchBlamesSender(t *testing.T) {
 			},
 		},
 		peerManager:   &staticPM{self: self},
-		onBlamedPeers: sign.storeBlamedPeers,
+		onBlame: sign.storeBlame,
 	}
 	err = h.HandleMessage(log.New(), &Message{
 		Id:   sender,
@@ -426,7 +427,7 @@ func TestRound1GammaCiphertextMismatchBlamesSender(t *testing.T) {
 		t.Fatalf("want mismatch, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -493,7 +494,7 @@ func TestRound2InvalidPsihatVerifyBlamesSender(t *testing.T) {
 			paillierKey:     errPaillierKeyA,
 			kCiphertext:     kCipher,
 			bkpartialPubKey: errTestPublicKey,
-			onBlamedPeers:   sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	// Restore valid Psihat for digest, tamper only in opened message.
@@ -510,7 +511,7 @@ func TestRound2InvalidPsihatVerifyBlamesSender(t *testing.T) {
 		t.Fatal("expected Psihat verify error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed after invalid Psihat", sender)
@@ -587,7 +588,7 @@ func TestRound2InvalidPsipaiVerifyBlamesSender(t *testing.T) {
 			paillierKey:     errPaillierKeyA,
 			kCiphertext:     kCipher,
 			bkpartialPubKey: errTestPublicKey,
-			onBlamedPeers:   sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	r2.Psipai = &paillierzkproof.LogStarMessage{S: []byte{0xff}}
@@ -596,7 +597,7 @@ func TestRound2InvalidPsipaiVerifyBlamesSender(t *testing.T) {
 		t.Fatal("expected Psipai verify error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed after invalid Psipai", sender)
@@ -614,7 +615,7 @@ func TestRound2InvalidGammaToPointBlamesSender(t *testing.T) {
 			digestStore:   newPairwiseDigestStore(),
 			peers:         map[string]*peer{sender: {Peer: message.NewPeer(sender)}},
 			peerManager:   &staticPM{self: self},
-			onBlamedPeers: sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	err := h.HandleMessage(log.New(), &Message{
@@ -628,7 +629,7 @@ func TestRound2InvalidGammaToPointBlamesSender(t *testing.T) {
 		t.Fatal("expected ToPoint error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -660,7 +661,7 @@ func TestRound2DigestGammaNilBlamesSender(t *testing.T) {
 			digestStore:   store,
 			peers:         map[string]*peer{sender: {Peer: message.NewPeer(sender)}},
 			peerManager:   &staticPM{self: self},
-			onBlamedPeers: sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	err = h.HandleMessage(log.New(), &Message{Id: sender, Type: Type_Round2, Body: &Message_Round2{Round2: r2}})
@@ -668,7 +669,7 @@ func TestRound2DigestGammaNilBlamesSender(t *testing.T) {
 		t.Fatalf("want mismatch for nil digestGamma, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -715,7 +716,7 @@ func TestRound3InvalidDeltaParseBlamesSender(t *testing.T) {
 				peerManager:   &staticPM{self: self},
 				own:           &peer{para: errPedZKA, ssidWithBk: ssid},
 				sumGamma:      errTestG,
-				onBlamedPeers: sign.storeBlamedPeers,
+				onBlame: sign.storeBlame,
 			},
 		},
 	}
@@ -734,7 +735,7 @@ func TestRound3InvalidDeltaParseBlamesSender(t *testing.T) {
 		t.Fatal("expected parse error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -754,7 +755,7 @@ func TestRound3InvalidBigDeltaToPointBlamesSender(t *testing.T) {
 				peers:         map[string]*peer{sender: {Peer: message.NewPeer(sender)}},
 				peerManager:   &staticPM{self: self},
 				own:           &peer{para: errPedZKA},
-				onBlamedPeers: sign.storeBlamedPeers,
+				onBlame: sign.storeBlame,
 			},
 		},
 	}
@@ -769,7 +770,7 @@ func TestRound3InvalidBigDeltaToPointBlamesSender(t *testing.T) {
 		t.Fatal("expected ToPoint error")
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -778,7 +779,10 @@ func TestRound3InvalidBigDeltaToPointBlamesSender(t *testing.T) {
 
 func TestGetBlamedPeersReturnsStoredCopy(t *testing.T) {
 	sign := &Sign{
-		blamedPeers: map[string]struct{}{"a": {}},
+		hasBlameSnapshot: true,
+		blameResult: blame.Result{
+			Confirmed: map[string]struct{}{"a": {}},
+		},
 		MessageMain: &stubMessageMain{state: types.StateFailed},
 	}
 	blamed, err := sign.GetBlamedPeers()
@@ -790,7 +794,10 @@ func TestGetBlamedPeersReturnsStoredCopy(t *testing.T) {
 	}
 	blamed["b"] = struct{}{}
 	sign.blamedMu.RLock()
-	_, leaked := sign.blamedPeers["b"]
+	_, leaked := sign.blameResult.Confirmed["b"]
+	if !leaked {
+		_, leaked = sign.blameResult.Suspect["b"]
+	}
 	sign.blamedMu.RUnlock()
 	if leaked {
 		t.Fatal("GetBlamedPeers should return a copy")

@@ -9,12 +9,13 @@ import (
 	"github.com/getamis/alice/types"
 	"github.com/getamis/alice/types/message"
 	"github.com/getamis/sirius/log"
+	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 )
 
 func TestBlamePeerNoCallback(t *testing.T) {
 	p3 := &round3Handler{
 		round2Handler: &round2Handler{
-			round1Handler: &round1Handler{onBlamedPeers: nil},
+			round1Handler: &round1Handler{onBlame: nil},
 		},
 	}
 	p3.blamePeer("peer")
@@ -25,7 +26,7 @@ func TestBlamePeerInvokesCallback(t *testing.T) {
 	p3 := &round3Handler{
 		round2Handler: &round2Handler{
 			round1Handler: &round1Handler{
-				onBlamedPeers: func(m map[string]struct{}) {
+				onBlame: func(c cggmp.BlameContribution) { m := c.Union(); 
 					for id := range m {
 						blamed = id
 					}
@@ -322,7 +323,7 @@ func TestErr1HandlerFinalizeBlamesBadPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stored map[string]struct{}
-	p3.onBlamedPeers = func(m map[string]struct{}) { stored = m }
+	p3.onBlame = func(c cggmp.BlameContribution) { m := c.Union();  stored = m }
 	eh, err := newErr1Handler(p3, ErrInvalidDelta)
 	if err != nil {
 		t.Fatal(err)
@@ -353,7 +354,7 @@ func TestErr2HandlerFinalizeBlamesBadPeer(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stored map[string]struct{}
-	p4.onBlamedPeers = func(m map[string]struct{}) { stored = m }
+	p4.onBlame = func(c cggmp.BlameContribution) { m := c.Union();  stored = m }
 	eh, err := newErr2Handler(p4, ErrIncorrectSig)
 	if err != nil {
 		t.Fatal(err)
@@ -431,7 +432,7 @@ func TestBuildDeltaVerifyFailureMsgBlamesInvalidPsi(t *testing.T) {
 	peer := p3.peers[tss.GetTestID(1)]
 	peer.round2Data.psiProof = &paillierzkproof.PaillierAffAndGroupRangeMessage{S: []byte{0xff}}
 	var blamed string
-	p3.onBlamedPeers = func(m map[string]struct{}) {
+	p3.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}

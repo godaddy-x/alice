@@ -9,6 +9,7 @@ import (
 	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types"
 	"github.com/getamis/sirius/log"
+	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 )
 
 func TestProcessErr1MsgThreePartyHonestRemote(t *testing.T) {
@@ -24,7 +25,7 @@ func TestProcessErr1MsgThreePartyHonestRemote(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(blamed) != 0 {
+		if len(blamed.Union()) != 0 {
 			t.Fatalf("party %d: expected no blame, got %v", i, blamed)
 		}
 	}
@@ -38,10 +39,10 @@ func TestProcessErr1MsgThreePartyGDeltaBlamesAllRemotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected party 1 blamed")
 	}
-	if _, ok := blamed[tss.GetTestID(2)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(2)]; !ok {
 		t.Fatal("expected party 2 blamed")
 	}
 }
@@ -79,7 +80,7 @@ func TestBuildSigmaVerifyFailureMsgBlamesInvalidPsihat(t *testing.T) {
 	peer := p4.peers[tss.GetTestID(1)]
 	peer.round2Data.psihatProoof = &paillierzkproof.PaillierAffAndGroupRangeMessage{S: []byte{0xff}}
 	var blamed string
-	p4.onBlamedPeers = func(m map[string]struct{}) {
+	p4.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}

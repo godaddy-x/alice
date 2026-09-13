@@ -20,18 +20,40 @@ option go_package = "github.com/getamis/alice/crypto/tss/eddsa/frost/signer";
 
 import "github.com/getamis/alice/crypto/ecpointgrouplaw/point.proto";
 
+// Type values must increase with protocol order (MsgMain rejects older types).
 enum Type {
-    Round1 = 0;
-    Round2 = 1;
+    Round1Digest = 0;
+    Round1       = 1;
+    Round2Digest = 2;
+    Round2       = 3;
 }
 
 message Message {
     Type type = 1;
     string id = 2;
     oneof body {
+        Round1DigestMsg round1Digest = 10;
         BodyRound1 round1 = 4;
+        Round2DigestMsg round2Digest = 11;
         BodyRound2 round2 = 5;
     }
+}
+
+message PeerDigestEntry {
+    string peer_id = 1;
+    bytes digest = 2; // exactly 32 bytes (blake2b-256)
+}
+
+message Round1DigestMsg {
+    ecpointgrouplaw.EcPointMessage D = 1;
+    ecpointgrouplaw.EcPointMessage E = 2;
+    repeated PeerDigestEntry to_peer = 3;
+    bytes table_root = 4;
+}
+
+message Round2DigestMsg {
+    repeated PeerDigestEntry to_peer = 1;
+    bytes table_root = 2;
 }
 
 message BodyRound1 {

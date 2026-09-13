@@ -8,6 +8,7 @@ import (
 	"github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types/message"
 	"github.com/getamis/sirius/log"
+	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 )
 
 func TestEdgeDigestStableAndSensitive(t *testing.T) {
@@ -102,7 +103,7 @@ func TestGateEdgeDigestMismatchBlames(t *testing.T) {
 		peerManager: &staticPM{self: self},
 	}
 	var blamed string
-	h.onBlamedPeers = func(m map[string]struct{}) {
+	h.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}
@@ -136,7 +137,7 @@ func TestAcceptDigestTableBlamesIncomplete3Party(t *testing.T) {
 		peerManager: &staticPM{self: self},
 	}
 	var blamed string
-	h.onBlamedPeers = func(m map[string]struct{}) {
+	h.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}
@@ -176,14 +177,14 @@ func TestExpectedPeersForSender3Party(t *testing.T) {
 	}
 }
 
-func TestStoreBlamedPeersMerge(t *testing.T) {
+func TestStoreBlameMerge(t *testing.T) {
 	s := &Sign{}
-	s.storeBlamedPeers(map[string]struct{}{"a": {}})
-	s.storeBlamedPeers(map[string]struct{}{"b": {}})
-	if _, ok := s.blamedPeers["a"]; !ok {
+	s.storeBlame(cggmp.BlameContributionFromConfirmed(map[string]struct{}{"a": {}}))
+	s.storeBlame(cggmp.BlameContributionFromConfirmed(map[string]struct{}{"b": {}}))
+	if _, ok := s.blameUnion()["a"]; !ok {
 		t.Fatal("missing a")
 	}
-	if _, ok := s.blamedPeers["b"]; !ok {
+	if _, ok := s.blameUnion()["b"]; !ok {
 		t.Fatal("missing b")
 	}
 }
@@ -272,7 +273,7 @@ func TestGateDigestBarrierBlames(t *testing.T) {
 		peerManager: &staticPM{self: self},
 	}
 	var blamed string
-	h.onBlamedPeers = func(m map[string]struct{}) {
+	h.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}
@@ -336,7 +337,7 @@ func TestRound2DigestOnDigestTimeoutBlames(t *testing.T) {
 		},
 	}
 	var blamed string
-	h.onBlamedPeers = func(m map[string]struct{}) {
+	h.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}
@@ -362,7 +363,7 @@ func TestRound3DigestOnDigestTimeoutBlames(t *testing.T) {
 		},
 	}
 	var blamed string
-	h.round1Handler.onBlamedPeers = func(m map[string]struct{}) {
+	h.round1Handler.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}
@@ -384,7 +385,7 @@ func TestRound1DigestNilBodyBlamesSender(t *testing.T) {
 		},
 	}
 	var blamed string
-	h.onBlamedPeers = func(m map[string]struct{}) {
+	h.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}
@@ -415,7 +416,7 @@ func TestRound1DigestOnDigestTimeoutBlames(t *testing.T) {
 		},
 	}
 	var blamed string
-	h.onBlamedPeers = func(m map[string]struct{}) {
+	h.onBlame = func(c cggmp.BlameContribution) { m := c.Union(); 
 		for id := range m {
 			blamed = id
 		}

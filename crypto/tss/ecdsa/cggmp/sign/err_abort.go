@@ -23,9 +23,7 @@ import (
 )
 
 func (p *round3Handler) blamePeer(id string) {
-	if p.onBlamedPeers != nil {
-		p.onBlamedPeers(map[string]struct{}{id: {}})
-	}
+	p.blameSender(id)
 }
 
 func (p *round3Handler) publishErr1() {

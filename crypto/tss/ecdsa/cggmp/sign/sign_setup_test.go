@@ -140,7 +140,7 @@ func newSigns() (map[string]*Sign, map[string]*birkhoffinterpolation.BkParameter
 	return buildSigns(2, nil)
 }
 
-// buildSigns creates an in-process sign mesh. round2Tamper maps attacker party index → victim peer id.
+// buildSigns creates an in-process sign mesh. round2Tamper maps attacker party index ???victim peer id.
 func buildSigns(lens int, round2Tamper map[int]string) (map[string]*Sign, map[string]*birkhoffinterpolation.BkParameter, map[string]*mocks.StateChangedListener) {
 	return buildSignsOpts(lens, signBuildOptions{round2Tamper: round2Tamper})
 }

@@ -87,10 +87,10 @@ var _ = Describe("ProcessErr", func() {
 		errMsg2 := &Message{Id: ID2, Type: Type_Err1, Body: p2Err.err1Msg.Body}
 		blamed, err := p1Err.ProcessErr1Msg([]*Message{errMsg2})
 		Expect(err).Should(BeNil())
-		Expect(len(blamed)).Should(BeZero())
+		Expect(len(blamed.Union())).Should(BeZero())
 		blamed, err = p2Err.ProcessErr1Msg([]*Message{errMsg1})
 		Expect(err).Should(BeNil())
-		Expect(len(blamed)).Should(BeZero())
+		Expect(len(blamed.Union())).Should(BeZero())
 
 		tampered := &Message{Id: ID2, Type: Type_Err1, Body: p2Err.err1Msg.Body}
 		peerMsg := tampered.GetErr1().Peers[ID1]
@@ -99,7 +99,7 @@ var _ = Describe("ProcessErr", func() {
 		peerMsg.ProductCiphertext[0] ^= 0xff
 		blamed, err = p1Err.ProcessErr1Msg([]*Message{tampered})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 
 		noProduct := &Message{Id: ID2, Type: Type_Err1, Body: p2Err.err1Msg.Body}
 		noProductPeer := noProduct.GetErr1().Peers[ID1]
@@ -107,7 +107,7 @@ var _ = Describe("ProcessErr", func() {
 		noProductPeer.ProductCiphertext = nil
 		blamed, err = p1Err.ProcessErr1Msg([]*Message{noProduct})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 
 		mismatchedD := &Message{Id: ID2, Type: Type_Err1, Body: p2Err.err1Msg.Body}
 		dPeer := mismatchedD.GetErr1().Peers[ID1]
@@ -116,11 +116,11 @@ var _ = Describe("ProcessErr", func() {
 		dPeer.D[0] ^= 0xff
 		blamed, err = p1Err.ProcessErr1Msg([]*Message{mismatchedD})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 
 		blamed, err = p1Err.ProcessErr1Msg(nil)
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 
 		// Scheme A': δ+1 must fail DecModQ against fixed untranslated product C0.
 		wrongDelta := &Message{Id: ID2, Type: Type_Err1, Body: p2Err.err1Msg.Body}
@@ -128,7 +128,7 @@ var _ = Describe("ProcessErr", func() {
 		p1Err.peers[ID2].round3Data.delta.Mod(p1Err.peers[ID2].round3Data.delta, errTestPublicKey.GetCurve().Params().N)
 		blamed, err = p1Err.ProcessErr1Msg([]*Message{wrongDelta})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 	})
 
 	It("Error2 handle: Should be OK", func() {
@@ -177,10 +177,10 @@ var _ = Describe("ProcessErr", func() {
 
 		blamed, err := p1Err.ProcessErr2Msg([]*Message{errMsg2})
 		Expect(err).Should(BeNil())
-		Expect(len(blamed)).Should(BeZero())
+		Expect(len(blamed.Union())).Should(BeZero())
 		blamed, err = p2Err.ProcessErr2Msg([]*Message{errMsg1})
 		Expect(err).Should(BeNil())
-		Expect(len(blamed)).Should(BeZero())
+		Expect(len(blamed.Union())).Should(BeZero())
 
 		tampered := &Message{Id: ID2, Type: Type_Err2, Body: p2Err.err2Msg.Body}
 		peerMsg := tampered.GetErr2().Peers[ID1]
@@ -189,7 +189,7 @@ var _ = Describe("ProcessErr", func() {
 		peerMsg.ProductCiphertext[0] ^= 0xff
 		blamed, err = p1Err.ProcessErr2Msg([]*Message{tampered})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 
 		// Scheme A': σ+1 must fail DecModQ(K^m, σ−r·χ) against fixed Err2 proofs.
 		wrongSigma := &Message{Id: ID2, Type: Type_Err2, Body: p2Err.err2Msg.Body}
@@ -197,7 +197,7 @@ var _ = Describe("ProcessErr", func() {
 		p1Err.peers[ID2].round4Data.sigma.Mod(p1Err.peers[ID2].round4Data.sigma, errTestPublicKey.GetCurve().Params().N)
 		blamed, err = p1Err.ProcessErr2Msg([]*Message{wrongSigma})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 		// restore for later use
 		p1Err.peers[ID2].round4Data.sigma = new(big.Int).Set(p2Setup.sigma)
 
@@ -205,7 +205,7 @@ var _ = Describe("ProcessErr", func() {
 		noKm.GetErr2().Peers[ID1].DecModQKm = nil
 		blamed, err = p1Err.ProcessErr2Msg([]*Message{noKm})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 
 		Expect(len(p2Err.err2Msg.GetErr2().GetChi())).NotTo(BeZero())
 
@@ -504,7 +504,7 @@ var _ = Describe("Abort e2e / API", func() {
 		Expect(p2Err.buildDeltaVerifyFailureMsg()).Should(Succeed())
 
 		var stored map[string]struct{}
-		p1Err.onBlamedPeers = func(m map[string]struct{}) { stored = m }
+		p1Err.onBlame = func(c cggmp.BlameContribution) { m := c.Union();  stored = m }
 
 		eh, err := newErr1Handler(p1Err, ErrInvalidDelta)
 		Expect(err).Should(BeNil())
@@ -512,7 +512,7 @@ var _ = Describe("Abort e2e / API", func() {
 		errMsg2 := &Message{Id: ID2, Type: Type_Err1, Body: p2Err.err1Msg.Body}
 		blamed, err := p1Err.ProcessErr1Msg([]*Message{errMsg2})
 		Expect(err).Should(BeNil())
-		Expect(len(blamed)).Should(BeZero())
+		Expect(len(blamed.Union())).Should(BeZero())
 		Expect(eh.HandleMessage(log.New(), errMsg2)).Should(Succeed())
 
 		_, finalizeErr := eh.Finalize(log.New())
@@ -577,6 +577,6 @@ var _ = Describe("Abort e2e / API", func() {
 		}
 		blamed, err := p1Err.ProcessErr2Msg([]*Message{{Id: ID2, Type: Type_Err2, Body: p2Err.err2Msg.Body}})
 		Expect(err).Should(BeNil())
-		Expect(blamed).To(HaveKey(ID2))
+		Expect(blamed.Union()).To(HaveKey(ID2))
 	})
 })

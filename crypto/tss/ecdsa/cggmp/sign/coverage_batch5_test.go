@@ -14,7 +14,7 @@ func TestProcessErr1MsgIgnoresUnknownSender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blamed) != 0 {
+	if len(blamed.Union()) != 0 {
 		t.Fatalf("expected no blame for valid remote, got %v", blamed)
 	}
 }
@@ -28,7 +28,7 @@ func TestProcessErr1MsgBlamesPeerNsLengthMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed when peerNs shorter than Err1 peers map")
 	}
 }
@@ -41,7 +41,7 @@ func TestProcessErr1MsgAggregateBlamesLocalMissingRound3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected local peer blamed in aggregate for missing round3 data")
 	}
 }
@@ -57,7 +57,7 @@ func TestProcessErr1MsgBlamesTamperedD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for tampered D")
 	}
 }
@@ -73,7 +73,7 @@ func TestProcessErr1MsgBlamesMissingDecModQProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing DecModQ")
 	}
 }
@@ -117,7 +117,7 @@ func TestProcessErr2MsgBlamesTamperedDhat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for tampered Dhat")
 	}
 }
@@ -133,7 +133,7 @@ func TestProcessErr2MsgBlamesMissingDecModQProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing DecModQ")
 	}
 }

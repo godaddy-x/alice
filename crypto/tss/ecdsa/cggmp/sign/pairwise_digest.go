@@ -2,20 +2,14 @@
 package sign
 
 import (
-	"bytes"
-	"encoding/binary"
-	"errors"
-	"hash"
-	"sort"
-
-	"github.com/minio/blake2b-simd"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/getamis/alice/crypto/tss/pairwise"
 )
 
 const (
 	// v3: length-prefixed variable fields (ssid / ids / payload) for domain separation.
 	pairwiseDigestDST = "AMIS-Alice-CGGMP-Sign-Pairwise-Digest-v3"
-	digestLen         = 32
 
 	tagR1   = "R1"
 	tagR2   = "R2"
@@ -23,112 +17,64 @@ const (
 	tagRoot = "ROOT"
 )
 
+const digestLen = pairwise.DigestLen
+
 var (
-	ErrPairwiseDigestMismatch = errors.New("pairwise digest mismatch")
-	ErrPairwiseDigestTable    = errors.New("invalid pairwise digest table")
-	ErrDigestBarrier          = errors.New("pairwise digest barrier not ready")
-	ErrDigestTableRoot        = errors.New("pairwise digest table_root mismatch")
+	ErrPairwiseDigestMismatch = pairwise.ErrPairwiseDigestMismatch
+	ErrPairwiseDigestTable    = pairwise.ErrPairwiseDigestTable
+	ErrDigestBarrier          = pairwise.ErrDigestBarrier
+	ErrDigestTableRoot        = pairwise.ErrDigestTableRoot
 )
 
 func marshalDet(m proto.Message) ([]byte, error) {
 	return proto.MarshalOptions{Deterministic: true}.Marshal(m)
 }
 
-func writeLP(h hash.Hash, b []byte) {
-	var lb [4]byte
-	binary.BigEndian.PutUint32(lb[:], uint32(len(b)))
-	_, _ = h.Write(lb[:])
-	_, _ = h.Write(b)
-}
-
-func edgeDigest(ssid []byte, roundTag, sender, recipient string, payload []byte) []byte {
-	h := blake2b.New256()
-	_, _ = h.Write([]byte(pairwiseDigestDST))
-	writeLP(h, ssid)
-	writeLP(h, []byte(roundTag))
-	writeLP(h, []byte(sender))
-	writeLP(h, []byte(recipient))
-	writeLP(h, payload)
-	return h.Sum(nil)
-}
-
-func tableRoot(ssid []byte, roundTag, sender string, entries []*PeerDigestEntry) []byte {
-	sorted := sortEntries(entries)
-	h := blake2b.New256()
-	_, _ = h.Write([]byte(pairwiseDigestDST))
-	writeLP(h, ssid)
-	writeLP(h, []byte(roundTag))
-	writeLP(h, []byte(tagRoot))
-	writeLP(h, []byte(sender))
-	for _, e := range sorted {
-		writeLP(h, []byte(e.GetPeerId()))
-		writeLP(h, e.GetDigest())
-	}
-	return h.Sum(nil)
-}
-
-func sortEntries(in []*PeerDigestEntry) []*PeerDigestEntry {
-	out := make([]*PeerDigestEntry, len(in))
-	copy(out, in)
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].GetPeerId() < out[j].GetPeerId()
-	})
-	return out
-}
-
-// ValidateDigestTable checks completeness against expectedPeers and table_root.
-func ValidateDigestTable(ssid []byte, roundTag, sender string, expectedPeers []string, entries []*PeerDigestEntry, root []byte) (map[string][]byte, error) {
-	if len(entries) != len(expectedPeers) {
-		return nil, ErrPairwiseDigestTable
-	}
-	want := make(map[string]struct{}, len(expectedPeers))
-	for _, id := range expectedPeers {
-		want[id] = struct{}{}
-	}
-	tab := make(map[string][]byte, len(entries))
-	for _, e := range entries {
-		if e == nil || len(e.GetDigest()) != digestLen {
-			return nil, ErrPairwiseDigestTable
+func cggmpEntries(in []*PeerDigestEntry) []pairwise.Entry {
+	out := make([]pairwise.Entry, 0, len(in))
+	for _, e := range in {
+		if e == nil {
+			continue
 		}
-		id := e.GetPeerId()
-		if _, ok := want[id]; !ok {
-			return nil, ErrPairwiseDigestTable
-		}
-		if _, dup := tab[id]; dup {
-			return nil, ErrPairwiseDigestTable
-		}
-		tab[id] = append([]byte(nil), e.GetDigest()...)
-		delete(want, id)
-	}
-	if len(want) != 0 {
-		return nil, ErrPairwiseDigestTable
-	}
-	gotRoot := tableRoot(ssid, roundTag, sender, entries)
-	if !bytes.Equal(gotRoot, root) {
-		return nil, ErrDigestTableRoot
-	}
-	return tab, nil
-}
-
-func buildSortedEntries(digests map[string][]byte) []*PeerDigestEntry {
-	ids := make([]string, 0, len(digests))
-	for id := range digests {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	out := make([]*PeerDigestEntry, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, &PeerDigestEntry{
-			PeerId: id,
-			Digest: append([]byte(nil), digests[id]...),
+		out = append(out, pairwise.Entry{
+			PeerID: e.GetPeerId(),
+			Digest: append([]byte(nil), e.GetDigest()...),
 		})
 	}
 	return out
 }
 
+func peerDigestEntries(entries []pairwise.Entry) []*PeerDigestEntry {
+	out := make([]*PeerDigestEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, &PeerDigestEntry{
+			PeerId: e.PeerID,
+			Digest: append([]byte(nil), e.Digest...),
+		})
+	}
+	return out
+}
+
+func edgeDigest(ssid []byte, roundTag, sender, recipient string, payload []byte) []byte {
+	return pairwise.EdgeDigest(pairwiseDigestDST, ssid, roundTag, sender, recipient, payload)
+}
+
+// ValidateDigestTable checks completeness against expectedPeers and table_root.
+func ValidateDigestTable(ssid []byte, roundTag, sender string, expectedPeers []string, entries []*PeerDigestEntry, root []byte) (map[string][]byte, error) {
+	return pairwise.ValidateTable(pairwiseDigestDST, ssid, roundTag, sender, expectedPeers, cggmpEntries(entries), root)
+}
+
 func commitDigestTable(ssid []byte, roundTag, sender string, digests map[string][]byte) ([]*PeerDigestEntry, []byte) {
-	entries := buildSortedEntries(digests)
-	return entries, tableRoot(ssid, roundTag, sender, entries)
+	entries, root := pairwise.CommitTable(pairwiseDigestDST, ssid, roundTag, sender, digests)
+	return peerDigestEntries(entries), root
+}
+
+func buildSortedEntries(digests map[string][]byte) []*PeerDigestEntry {
+	return peerDigestEntries(pairwise.BuildSortedEntries(digests))
+}
+
+func tableRoot(ssid []byte, roundTag, sender string, entries []*PeerDigestEntry) []byte {
+	return pairwise.TableRoot(pairwiseDigestDST, ssid, roundTag, sender, cggmpEntries(entries))
 }
 
 func Round1PsiDigest(ssid []byte, sender, recipient string, psi proto.Message) ([]byte, error) {

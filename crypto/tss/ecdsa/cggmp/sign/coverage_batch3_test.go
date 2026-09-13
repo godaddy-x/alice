@@ -135,7 +135,7 @@ func TestRound2DigestGammaWrongPointBlamesSender(t *testing.T) {
 				},
 			},
 			peerManager:   &staticPM{self: self},
-			onBlamedPeers: sign.storeBlamedPeers,
+			onBlame: sign.storeBlame,
 		},
 	}
 	err = h.HandleMessage(log.New(), &Message{Id: sender, Type: Type_Round2, Body: &Message_Round2{Round2: r2}})
@@ -143,7 +143,7 @@ func TestRound2DigestGammaWrongPointBlamesSender(t *testing.T) {
 		t.Fatalf("want digest mismatch, got %v", err)
 	}
 	sign.blamedMu.RLock()
-	_, ok := sign.blamedPeers[sender]
+	_, ok := sign.blameUnion()[sender]
 	sign.blamedMu.RUnlock()
 	if !ok {
 		t.Fatalf("expected %s blamed", sender)
@@ -157,7 +157,7 @@ func TestProcessErr1MsgBlamesGDeltaAggregateMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected remote sender blamed for gDelta aggregate mismatch")
 	}
 }
@@ -173,7 +173,7 @@ func TestProcessErr1MsgBlamesTamperedF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for tampered F")
 	}
 }
@@ -189,7 +189,7 @@ func TestProcessErr1MsgBlamesProductCiphertextMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for product ciphertext mismatch")
 	}
 }
@@ -210,7 +210,7 @@ func TestProcessErr1MsgAggregateBigDeltaAddCurveMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Per-sender verification passes; aggregate Add fails with deltaOK=false (no gDelta blame).
-	if len(blamed) != 0 {
+	if len(blamed.Union()) != 0 {
 		t.Fatalf("expected no blame when aggregate Add fails early, got %v", blamed)
 	}
 }

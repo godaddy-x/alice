@@ -19,7 +19,7 @@ func TestProcessErr2MsgThreePartyHonestRemote(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(blamed) != 0 {
+		if len(blamed.Union()) != 0 {
 			t.Fatalf("party %d: expected no blame, got %v", i, blamed)
 		}
 	}
@@ -33,7 +33,7 @@ func TestProcessErr2MsgBlamesPeerNsLengthMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed when peerNs shorter than Err2 peers map")
 	}
 }
@@ -46,7 +46,7 @@ func TestProcessErr2MsgIgnoresUnknownSender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blamed) != 0 {
+	if len(blamed.Union()) != 0 {
 		t.Fatalf("expected no blame for valid remote, got %v", blamed)
 	}
 }
@@ -63,7 +63,7 @@ func TestProcessErr2MsgBlamesTamperedFhat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for tampered Fhat")
 	}
 }
@@ -76,7 +76,7 @@ func TestProcessErr2MsgBlamesMissingRound1Data(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing round1 data")
 	}
 }
@@ -90,7 +90,7 @@ func TestProcessErr2MsgBlamesNilErr2Body(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for nil err2 body")
 	}
 }
@@ -104,7 +104,7 @@ func TestProcessErr2MsgBlamesMissingSelfEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed when self entry missing from err2 peers map")
 	}
 }

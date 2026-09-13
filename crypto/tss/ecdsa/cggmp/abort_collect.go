@@ -17,6 +17,7 @@ package cggmp
 import (
 	"sync"
 
+	"github.com/getamis/alice/crypto/tss/blame"
 	"github.com/getamis/alice/types"
 	"github.com/getamis/alice/types/message"
 )
@@ -90,12 +91,5 @@ func WrapEchoAbortCollect[T types.Message](
 
 // CopyBlamedMap returns a shallow copy of blamed peer ids.
 func CopyBlamedMap(in map[string]struct{}) map[string]struct{} {
-	if in == nil {
-		return nil
-	}
-	out := make(map[string]struct{}, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
+	return blame.CopyMap(in)
 }

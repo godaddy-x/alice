@@ -65,7 +65,7 @@ func TestProcessErr2MsgBlamesMissingDecModQKmProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing DecModQKm")
 	}
 }
@@ -131,7 +131,7 @@ func TestProcessErr1MsgAggregateRound3InnerNil(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected local peer blamed when round3 inner message is nil")
 	}
 }
@@ -144,7 +144,7 @@ func TestProcessErr2MsgBlamesMissingRound2Data(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing round2 data")
 	}
 }

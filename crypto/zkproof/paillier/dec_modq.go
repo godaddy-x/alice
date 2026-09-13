@@ -107,9 +107,11 @@ func NewDecModQMessage(config *CurveConfig, ssidInfo []byte, Y, rho, N0, C, x *b
 	// Fiat–Shamir: e = Hash(DST, ssid, …, C, x, …). C and x MUST stay in this
 	// transcript; omitting either allows existential forgery (reuse proof with
 	// substituted productCiphertext or δ/σ representative).
-	// GetE samples e ∈ [-q/2,q/2] (not necessarily prime). Special-soundness
-	// extraction needs e≠e'; library-wide assumption: q prime ⇒ invertible mod q;
-	// gcd(e−e′,N)=1 holds except with negligible probability for RSA moduli (R1-FS).
+	// GetE samples e ∈ [-q/2,q/2] (not necessarily prime; same as upstream).
+	// Special-soundness: e≠e'; q prime ⇒ invertible mod q.
+	// Under Alice params (|e|≤q/2 ≪ Paillier primes), e≠e' ⇒ gcd(e−e′,N)=1
+	// always (deterministic; not w.h.p.). Accepted risk is proof-template gap
+	// only — see docs/review-v1/R1-FS_risk_memo.md.
 	msgs := decModQChallengeInputs(ssidInfo, pedN.Bytes(), peds.Bytes(), pedt.Bytes(), A.Bytes(), S.Bytes(), T.Bytes(), N0.Bytes(), C.Bytes(), x.Bytes(), curveN, msgCPoint)
 	e, counter, err := GetE(DecModQZKDST, curveN, msgs...)
 	if err != nil {

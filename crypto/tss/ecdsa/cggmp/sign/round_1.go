@@ -92,8 +92,9 @@ type round1Handler struct {
 
 	digestStore *pairwiseDigestStore
 
-	onAbortMsg    func(*Message)
-	onBlamedPeers func(map[string]struct{})
+	onAbortMsg          func(*Message)
+	onBlame             func(cggmp.BlameContribution) // Confirmed: ZK/gate/echo; Suspect: timeout/absent/Δ/ambiguous
+	ambiguousMaskPolicy cggmp.AmbiguousMaskPolicy
 }
 
 func newRound1Handler(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.ECPoint, partialPubKey map[string]*pt.ECPoint, paillierKey *paillier.Paillier, ped map[string]*paillierzkproof.PederssenOpenParameter, bks map[string]*birkhoffinterpolation.BkParameter, msg []byte, peerManager types.PeerManager) (*round1Handler, error) {

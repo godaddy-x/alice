@@ -6,6 +6,7 @@ import (
 
 	pt "github.com/getamis/alice/crypto/ecpointgrouplaw"
 	"github.com/getamis/alice/crypto/tss"
+	"github.com/getamis/alice/crypto/tss/blame"
 	"github.com/getamis/alice/crypto/tss/ecdsa/cggmp"
 	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 )
@@ -205,15 +206,15 @@ func TestCloneDecryMulMulStar(t *testing.T) {
 
 func TestMatchDecModQWithBetaCorrectionEdgeCases(t *testing.T) {
 	q := errTestPublicKey.GetCurve().Params().N
-	if matchDecModQWithBetaCorrection(nil, []byte("ssid"), big.NewInt(1), big.NewInt(1), big.NewInt(1), q, map[string]*big.Int{"p1": big.NewInt(2)}, errPedZKA) {
-		t.Fatal("nil proof should fail")
+	if matchDecModQWithBetaCorrection(nil, []byte("ssid"), big.NewInt(1), big.NewInt(1), big.NewInt(1), q, map[string]*big.Int{"p1": big.NewInt(2)}, errPedZKA) != blame.MaskNone {
+		t.Fatal("nil proof should be MaskNone")
 	}
 	peerNs := make(map[string]*big.Int, cggmp.MaxIARemotePeers+1)
 	for i := 0; i <= cggmp.MaxIARemotePeers; i++ {
 		peerNs[tss.GetTestID(i)] = big.NewInt(int64(i + 2))
 	}
-	if matchDecModQWithBetaCorrection(&paillierzkproof.DecModQMessage{}, []byte("ssid"), big.NewInt(1), big.NewInt(1), big.NewInt(1), q, peerNs, errPedZKA) {
-		t.Fatal("too many peers should fail")
+	if matchDecModQWithBetaCorrection(&paillierzkproof.DecModQMessage{}, []byte("ssid"), big.NewInt(1), big.NewInt(1), big.NewInt(1), q, peerNs, errPedZKA) != blame.MaskNone {
+		t.Fatal("too many peers should be MaskNone")
 	}
 }
 

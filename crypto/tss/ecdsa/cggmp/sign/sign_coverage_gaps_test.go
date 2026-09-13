@@ -190,7 +190,7 @@ func TestProcessErr1MsgBlamesMissingRound1Data(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing round1 data")
 	}
 }
@@ -202,7 +202,7 @@ func TestProcessErr1MsgBlamesMissingRound2Data(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing round2 data")
 	}
 }
@@ -224,7 +224,7 @@ func TestProcessErr1MsgBlamesPeerKeysMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[senderID]; !ok {
+	if _, ok := blamed.Union()[senderID]; !ok {
 		t.Fatal("expected sender blamed for peer key mismatch")
 	}
 }
@@ -250,7 +250,7 @@ func TestProcessErr1MsgBlamesReconstructProductFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[senderID]; !ok {
+	if _, ok := blamed.Union()[senderID]; !ok {
 		t.Fatal("expected sender blamed for reconstruct failure")
 	}
 }
@@ -266,7 +266,7 @@ func TestProcessErr1MsgBlamesMatchDecModQFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for dec mod q failure")
 	}
 }
@@ -282,7 +282,7 @@ func TestProcessErr1MsgBlamesNilRound3BodyInAggregate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for nil round3 body")
 	}
 }
@@ -298,7 +298,7 @@ func TestProcessErr1MsgBlamesBigDeltaToPointInAggregate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for invalid bigDelta")
 	}
 }
@@ -310,7 +310,7 @@ func TestProcessErr2MsgBlamesNilR(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed when R is nil")
 	}
 }
@@ -322,7 +322,7 @@ func TestProcessErr2MsgBlamesNilMsg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed when msg is nil")
 	}
 }
@@ -338,7 +338,7 @@ func TestProcessErr2MsgBlamesBadChi(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for invalid chi")
 	}
 }
@@ -350,7 +350,7 @@ func TestProcessErr2MsgBlamesMissingKCiphertext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for missing k ciphertext")
 	}
 }
@@ -372,7 +372,7 @@ func TestProcessErr2MsgBlamesPeerKeysMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[senderID]; !ok {
+	if _, ok := blamed.Union()[senderID]; !ok {
 		t.Fatal("expected sender blamed for peer key mismatch")
 	}
 }
@@ -388,7 +388,7 @@ func TestProcessErr2MsgBlamesMatchDecModQFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := blamed[tss.GetTestID(1)]; !ok {
+	if _, ok := blamed.Union()[tss.GetTestID(1)]; !ok {
 		t.Fatal("expected sender blamed for dec mod q failure")
 	}
 }

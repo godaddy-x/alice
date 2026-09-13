@@ -18,17 +18,22 @@ Sign 主路径与论文一致（广播一致前提下）。未发现远程 key-r
 
 ## 2. 问题清单
 
-| ID | 级 | 问题 | 状态 |
-|----|-----|------|------|
-| F-01 | 高 | Echo | ✅ sign：全局字段 Echo + **pairwise Digest 屏障**；⚠️ signSix / refresh |
-| F-02 | 中 | Sign ped 校验 | ✅ |
-| F-03 | 中 | DKG Schnorr commitment | ✅ |
-| M-01 | 中 | Round3 Delta DoS | ✅ |
-| F-04 | 中 | Err 不广播 | ✅ |
-| F-05 | 中 | signSix Err2 Type | ✅ `round_6.go` |
-| M-02 | 中 | partialPubKey 校验 | ✅ |
-| F-06 | 低 | msg 进 ssid | ✅ `ComputeSignSSID` |
-| F-07/F-08 | 低 | Refresh | 待修 / 集成层 |
+> **权威状态表**（四档：已修 / 部分 / 待修 / 接受风险）及 remediation 方案见  
+> **[CGGMP_IA_LIMITS_AND_REMEDIATION.md](./CGGMP_IA_LIMITS_AND_REMEDIATION.md)** §3–§7。  
+> 下表为概要；**勿将 ✅ 解读为 IA 可证明归责完备**。
+
+| ID | 级 | 问题 | 概要状态 |
+|----|-----|------|----------|
+| F-01 | 高 | Echo / Pairwise | **部分**（sign 已修；signSix / refresh 待修） |
+| F-02 | 中 | Sign ped 校验 | 已修 |
+| F-03 | 中 | DKG Schnorr commitment | 已修 |
+| M-01 | 中 | Round3 Delta DoS | 已修（**≠** Err1 精确归责） |
+| F-04 | 中 | Err 广播收集 | 已修 |
+| F-05 | 中 | signSix Err2 Type | 已修 |
+| M-02 | 中 | partialPubKey 校验 | 已修 |
+| F-06 | 低 | msg 进 ssid | 已修 |
+| F-07/F-08 | 低 | Refresh | 待修 |
+| IA-01~08 | — | IA / blame 边界 | 见 IA_LIMITS 文档 |
 
 **Sign Echo / Digest（严格）**：
 
@@ -93,17 +98,20 @@ Round3 ──δ 失败──► Err1 ──ProcessErr1──► Failed
 | 项 | Special Decry | DecModQ |
 |----|---------------|---------|
 | FS DST | `SpecialDecryZKDST` | `DecModQZKDST` |
-| Range | \(\|\alpha+eY\|\le 2^{L+\varepsilon}\) | \(\|Y\|<8N\)；Verify 检查 \(\|z_1\|<\texttt{maxDecModQZ1}\) |
+| Range | \(\|\alpha+eY\|\le 2^{L+\varepsilon}\) | **有效判定界**：\(\|Y\|<8N\) + Verify \(\|z_1\|\le\texttt{maxDecModQZ1}\) |
 | 绑定 \(x\) | 短整数 | \(x\in[0,q)\)；\(z_1 G = C_{pt}+e\cdot x G\) |
 
 ### 5.2 审查结论（摘要）
 
 - **\(w\) 无界**：不破坏 KS；ZK 为 Weak（可接受）。
 - **\(Y^*\)**：Extractor 得 \(\mathbb{Z}_{N\cdot q}\) **等价类**；\(\|Y\|<8N\) 唯一确定小代表元。
-- **\(\|Y\|<8N\)**：`VerifyModQ` **已显式** `|z1| ≤ maxDecModQZ1`（≈ \(2^{L+\varepsilon}+(8N-1)(q-1)+2^{64}\)）；**不可删除**。
+- **有效判定界（相对论文的工程加强；代码与文档一致）**：
+  - **\(\|Y\|<8N\)**（`maxDecModQYOverN=8`）：Prove 入口拒绝过大 \(Y\)；与 Scheme A′ lift \(k\in[-2,7]\)、`MaxIARemotePeers=8` 联动。
+  - **\(\|z_1\| \le \texttt{maxDecModQZ1}\)**（≈ \(2^{L+\varepsilon}+(8N-1)(q-1)+2^{64}\)）：`VerifyModQ` **已显式检查**；无此界则恶意方可取 \(Y_{\mathrm{mal}}=Y+K\cdot N\cdot q\) 仍过 EC/Paillier 等式，破坏 \(\|Y\|<8N\) 与 IA 问责。**不可删除**。
+  - 上述两界是 **有效 soundness / 问责判定条件**，不是可选优化；删任一即离开当前审查结论。
 - **Lift A2**：\(Y_{\max}\lesssim q+8N\approx 8N\) ⇒ \(k\in[-2,7]\)；与 `MaxIARemotePeers` 联动。
 - **Modulo Gap**：Prove/Verify 共用**未约减** `z1`；EC 仅在 `ScalarMult` 内 mod \(q\)。
-- **R1-FS**：`GetE` 采 \(e\in[-q/2,q/2]\) 整数（非素数）；依赖 \(\gcd(e-e',N)=1\) w.h.p. + \(q\) 素数。**未改 GetE**（库级决策）。
+- **R1-FS**（准确状态）：代码与 upstream 一致（整数 challenge）；运行期 \(\gcd(e-e',N)=1\)（\(e\neq e'\)）已 **确定性** 证明恒成立；**唯一「弱」点**是证明模板未按标准 FS 形式表述 → 标准模型下 soundness **无闭合论证**，**不影响运行期行为**，**无已知攻击**。量化 memo：[R1-FS_risk_memo.md](./R1-FS_risk_memo.md)。**未改 GetE**（库级决策）。
 
 ### 5.3 Blame 边界
 
@@ -111,8 +119,14 @@ DecModQ = **自证/自曝**（本地密文 ↔ 广播 \(x\)）。指责上游 Mt
 
 ### 5.4 R1 Checklist
 
-- [x] KS（含 \(w\) 无界）、Lift A2、Err 组合、\(|z_1|\) 上界、Modulo Gap、Blame 边界  
-- [ ] **R1-FS** Challenge 素数性  
+完整项（含 PublicX 唯一性、w-Weak、接受风险 sign-off）见  
+**[CGGMP_IA_LIMITS_AND_REMEDIATION.md §6](./CGGMP_IA_LIMITS_AND_REMEDIATION.md#6-r1--decmodq-checklist扩展)**。
+
+- [x] Lift A2、\(|z_1|\) 上界、Modulo Gap（**已修**）  
+- [~] Err 组合 / Blame 边界（**部分** — IA-01/03/06）  
+- [~] KS / \(w\) 无界（**接受风险** — Weak ZK）  
+- [ ] **R1-FS** Challenge 素数性（**接受风险** — [R1-FS_risk_memo.md](./R1-FS_risk_memo.md) · PR-D4a 已交付 memo）  
+- [ ] **PublicX mask 枚举唯一性**（**待修** — IA-01）  
 
 ---
 
@@ -146,3 +160,4 @@ go test ./crypto/tss/ecdsa/cggmp/sign/ -bench=MatchDecModQMaskEnum8 -benchmem
 | 2026-09-12 | Err H_edge 再哈希、Echo conflict blame、digest DST v3 长度前缀 |
 | 2026-09-12 | 审计补齐：digest 超时 blame、ZK 失败 blame、`storeBlamedPeers` 并集、gate 缺表 blame |
 | 2026-09-12 | 攻击问责单测（equivocation/echo conflict/Err H_edge）；死代码清理 |
+| 2026-09-13 | §5.2：|Y|<8N / |z1| 标为有效判定界；R1-FS 准确状态（模板弱 ≠ 运行期弱） |
