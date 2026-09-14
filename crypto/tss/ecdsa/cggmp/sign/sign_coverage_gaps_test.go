@@ -70,8 +70,8 @@ func TestSignStartPrepareAndBroadcast(t *testing.T) {
 	if r1d.digestMsg == nil {
 		t.Fatal("expected digestMsg after prepare")
 	}
-	if len(pm.sent) != 1 || pm.sent[0] != "p1" {
-		t.Fatalf("expected digest broadcast, got %v", pm.sent)
+	if len(pm.sent) != 2 || pm.sent[0] != "p1" || pm.sent[1] != "p1" {
+		t.Fatalf("expected digest+reveal coflight broadcast, got %v", pm.sent)
 	}
 }
 

@@ -207,5 +207,10 @@ func (p *round2Handler) Finalize(logger log.Logger) (types.Handler, error) {
 	if err := p.buildRound3DigestAndBroadcast(delta, MsgDelta, pending); err != nil {
 		return nil, err
 	}
-	return newRound3DigestHandler(p, pending, delta.String(), MsgDelta), nil
+	r3d := newRound3DigestHandler(p, pending)
+	r3d.broadcastPendingReveals()
+	if p.coFlight != nil {
+		p.coFlight.Reset()
+	}
+	return r3d, nil // N/A INV: reveal-stage Finalize after CoFlight gate
 }

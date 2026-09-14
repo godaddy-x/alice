@@ -110,11 +110,58 @@ func peerDigestHandled(peers map[string]*peer, id string, msgType types.MessageT
 	return ok && peer.Messages[msgType] != nil
 }
 
-// --- Round1Digest ---
+// --- CoFlight shared guards (INV-1/2/3) ---
+
+func (p *round1Handler) rejectIfEchoConflict() error {
+	if p.coFlight.HasEchoConflict() {
+		return ErrEchoConflict
+	}
+	return nil
+}
+
+// coFlightReady reports whether MsgMain may Finalize this CoFlight stage.
+// Conflict forces Finalize so EnsureCanNext / Finalize can abort (A8).
+func (p *round1Handler) coFlightReady() bool {
+	echo, reveal, conflict := p.coFlight.Snapshot()
+	return conflict || (echo && reveal)
+}
+
+// coFlightComplete is the success Next condition (both done, no conflict).
+func (p *round1Handler) coFlightComplete() bool {
+	echo, reveal, conflict := p.coFlight.Snapshot()
+	return !conflict && echo && reveal
+}
+
+func (p *round1Handler) syncCoFlightFromPeers(digestType, revealType Type) {
+	if p.coFlight == nil {
+		return
+	}
+	var d, r uint32
+	for _, peer := range p.peers {
+		if peer.Messages[types.MessageType(digestType)] != nil {
+			d++
+		}
+		if peer.Messages[types.MessageType(revealType)] != nil {
+			r++
+		}
+	}
+	p.coFlight.SetEchoDone(d >= p.peerNum)
+	p.coFlight.SetRevealDone(r >= p.peerNum)
+}
+
+func isEarlyOrStored(early map[string]*Message, peers map[string]*peer, id string, revealType types.MessageType) bool {
+	if _, ok := early[id]; ok {
+		return true
+	}
+	return peerDigestHandled(peers, id, revealType)
+}
+
+// --- Round1Digest (CoFlight: Digest Echo ‖ Round1 Reveal) ---
 
 type round1DigestHandler struct {
 	*round1Handler
-	pendingRound1 map[string]*Message
+	pendingRound1 map[string]*Message // outbound reveals (self → peer)
+	earlyRound1   map[string]*Message // inbound reveals before digest
 	digestMsg     *Message
 }
 
@@ -122,6 +169,7 @@ func newRound1DigestHandler(r *round1Handler) *round1DigestHandler {
 	return &round1DigestHandler{
 		round1Handler: r,
 		pendingRound1: make(map[string]*Message, len(r.peers)),
+		earlyRound1:   make(map[string]*Message, len(r.peers)),
 	}
 }
 
@@ -133,9 +181,34 @@ func (p *round1DigestHandler) IsHandled(logger log.Logger, id string) bool {
 	_ = logger
 	return peerDigestHandled(p.peers, id, p.MessageType())
 }
+func (p *round1DigestHandler) CollectMessageTypes() []types.MessageType {
+	return []types.MessageType{types.MessageType(Type_Round1)}
+}
+func (p *round1DigestHandler) IsCollectHandled(logger log.Logger, msgType types.MessageType, id string) bool {
+	_ = logger
+	if msgType != types.MessageType(Type_Round1) {
+		return false
+	}
+	return isEarlyOrStored(p.earlyRound1, p.peers, id, types.MessageType(Type_Round1))
+}
+func (p *round1DigestHandler) ReadyToFinalize() bool { return p.coFlightReady() }
 
 func (p *round1DigestHandler) HandleMessage(logger log.Logger, message types.Message) error {
+	if err := p.rejectIfEchoConflict(); err != nil {
+		return err
+	}
 	msg := getMessage(message)
+	switch msg.Type {
+	case Type_Round1Digest:
+		return p.handleDigest(logger, msg)
+	case Type_Round1:
+		return p.handleReveal(logger, msg)
+	default:
+		return errors.New("unexpected message type in round1 coflight")
+	}
+}
+
+func (p *round1DigestHandler) handleDigest(logger log.Logger, msg *Message) error {
 	id := msg.GetId()
 	peer, ok := p.peers[id]
 	if !ok {
@@ -151,10 +224,41 @@ func (p *round1DigestHandler) HandleMessage(logger log.Logger, message types.Mes
 	}
 	peer.digestKCiphertext = cloneBytes(body.GetKCiphertext())
 	peer.digestGammaCiphertext = cloneBytes(body.GetGammaCiphertext())
-	return peer.AddMessage(msg)
+	if err := peer.AddMessage(msg); err != nil {
+		return err
+	}
+	if early, ok := p.earlyRound1[id]; ok {
+		delete(p.earlyRound1, id)
+		if err := p.round1Handler.HandleMessage(logger, early); err != nil {
+			return err
+		}
+	}
+	p.syncCoFlightFromPeers(Type_Round1Digest, Type_Round1)
+	return nil
+}
+
+func (p *round1DigestHandler) handleReveal(logger log.Logger, msg *Message) error {
+	id := msg.GetId()
+	if !peerDigestHandled(p.peers, id, types.MessageType(Type_Round1Digest)) {
+		p.earlyRound1[id] = msg
+		return nil
+	}
+	if err := p.round1Handler.HandleMessage(logger, msg); err != nil {
+		return err
+	}
+	p.syncCoFlightFromPeers(Type_Round1Digest, Type_Round1)
+	return nil
 }
 
 func (p *round1DigestHandler) Finalize(logger log.Logger) (types.Handler, error) {
+	if p.coFlight.HasEchoConflict() {
+		return nil, ErrEchoConflict
+	}
+	if p.coFlightComplete() {
+		// Production CoFlight: Digests+Reveals already collected; Reveal already sent at Start.
+		return p.round1Handler.Finalize(logger)
+	}
+	// N/A INV: serial-legacy / unit-test — Digests only; send Reveals then hand off.
 	if len(p.pendingRound1) != len(p.peers) {
 		return nil, errors.New("round1 reveal not prepared before digest barrier")
 	}
@@ -224,14 +328,29 @@ func (p *round1DigestHandler) broadcastRound1Digest() {
 	p.broadcastToPeers(p.digestMsg)
 }
 
-// --- Round2Digest ---
+// broadcastRound1CoFlight sends Digest and Reveal in the same scheduling point.
+func (p *round1DigestHandler) broadcastRound1CoFlight() {
+	p.broadcastRound1Digest()
+	for id, m := range p.pendingRound1 {
+		p.peerManager.MustSend(id, m)
+	}
+}
+
+// --- Round2Digest (CoFlight) ---
 
 type round2DigestHandler struct {
 	*round1Handler
+	reveal      *round2Handler
+	earlyRound2 map[string]*Message
 }
 
 func newRound2DigestHandler(r *round1Handler) *round2DigestHandler {
-	return &round2DigestHandler{round1Handler: r}
+	reveal, _ := newRound2Handler(r) // constructor never fails
+	return &round2DigestHandler{
+		round1Handler: r,
+		reveal:        reveal,
+		earlyRound2:   make(map[string]*Message, len(r.peers)),
+	}
 }
 
 func (p *round2DigestHandler) MessageType() types.MessageType {
@@ -242,9 +361,34 @@ func (p *round2DigestHandler) IsHandled(logger log.Logger, id string) bool {
 	_ = logger
 	return peerDigestHandled(p.peers, id, p.MessageType())
 }
+func (p *round2DigestHandler) CollectMessageTypes() []types.MessageType {
+	return []types.MessageType{types.MessageType(Type_Round2)}
+}
+func (p *round2DigestHandler) IsCollectHandled(logger log.Logger, msgType types.MessageType, id string) bool {
+	_ = logger
+	if msgType != types.MessageType(Type_Round2) {
+		return false
+	}
+	return isEarlyOrStored(p.earlyRound2, p.peers, id, types.MessageType(Type_Round2))
+}
+func (p *round2DigestHandler) ReadyToFinalize() bool { return p.coFlightReady() }
 
 func (p *round2DigestHandler) HandleMessage(logger log.Logger, message types.Message) error {
+	if err := p.rejectIfEchoConflict(); err != nil {
+		return err
+	}
 	msg := getMessage(message)
+	switch msg.Type {
+	case Type_Round2Digest:
+		return p.handleDigest(logger, msg)
+	case Type_Round2:
+		return p.handleReveal(logger, msg)
+	default:
+		return errors.New("unexpected message type in round2 coflight")
+	}
+}
+
+func (p *round2DigestHandler) handleDigest(logger log.Logger, msg *Message) error {
 	id := msg.GetId()
 	peer, ok := p.peers[id]
 	if !ok {
@@ -258,45 +402,84 @@ func (p *round2DigestHandler) HandleMessage(logger log.Logger, message types.Mes
 	if err := p.acceptDigestTable(digestR2, id, tagR2, body.GetToPeer(), body.GetTableRoot()); err != nil {
 		return err
 	}
-	// Stash gamma from digest for cross-check in Round2.
 	g, err := body.GetGamma().ToPoint()
 	if err != nil {
 		p.blameSender(id)
 		return err
 	}
 	peer.digestGamma = g
-	return peer.AddMessage(msg)
+	if err := peer.AddMessage(msg); err != nil {
+		return err
+	}
+	if early, ok := p.earlyRound2[id]; ok {
+		delete(p.earlyRound2, id)
+		if err := p.reveal.HandleMessage(logger, early); err != nil {
+			return err
+		}
+	}
+	p.syncCoFlightFromPeers(Type_Round2Digest, Type_Round2)
+	return nil
+}
+
+func (p *round2DigestHandler) handleReveal(logger log.Logger, msg *Message) error {
+	id := msg.GetId()
+	if !peerDigestHandled(p.peers, id, types.MessageType(Type_Round2Digest)) {
+		p.earlyRound2[id] = msg
+		return nil
+	}
+	if err := p.reveal.HandleMessage(logger, msg); err != nil {
+		return err
+	}
+	p.syncCoFlightFromPeers(Type_Round2Digest, Type_Round2)
+	return nil
+}
+
+func (p *round2DigestHandler) broadcastPendingReveals() {
+	for id, peer := range p.peers {
+		if peer.round1Data == nil || peer.round1Data.round2Msg == nil {
+			continue
+		}
+		p.peerManager.MustSend(id, peer.round1Data.round2Msg)
+	}
 }
 
 func (p *round2DigestHandler) Finalize(logger log.Logger) (types.Handler, error) {
+	if p.coFlight.HasEchoConflict() {
+		return nil, ErrEchoConflict
+	}
+	if p.coFlightComplete() {
+		return p.reveal.Finalize(logger)
+	}
+	// N/A INV: serial-legacy
 	for id, peer := range p.peers {
 		if peer.round1Data == nil || peer.round1Data.round2Msg == nil {
 			return nil, errors.New("missing pending round2 message")
 		}
 		p.peerManager.MustSend(id, peer.round1Data.round2Msg)
 	}
-	return newRound2Handler(p.round1Handler)
+	return p.reveal, nil
 }
 
 func (p *round2DigestHandler) OnDigestTimeout() {
 	p.blameMissingDigestSenders(p.MessageType())
 }
 
-// --- Round3Digest ---
+// --- Round3Digest (CoFlight) ---
 
 type round3DigestHandler struct {
 	*round2Handler
+	reveal        *round3Handler
 	pendingRound3 map[string]*Message
-	deltaStr      string
-	bigDeltaMsg   *pt.EcPointMessage
+	earlyRound3   map[string]*Message
 }
 
-func newRound3DigestHandler(r2 *round2Handler, pending map[string]*Message, deltaStr string, bigDelta *pt.EcPointMessage) *round3DigestHandler {
+func newRound3DigestHandler(r2 *round2Handler, pending map[string]*Message) *round3DigestHandler {
+	reveal, _ := newRound3Handler(r2) // constructor never fails
 	return &round3DigestHandler{
 		round2Handler: r2,
+		reveal:        reveal,
 		pendingRound3: pending,
-		deltaStr:      deltaStr,
-		bigDeltaMsg:   bigDelta,
+		earlyRound3:   make(map[string]*Message, len(r2.peers)),
 	}
 }
 
@@ -308,9 +491,34 @@ func (p *round3DigestHandler) IsHandled(logger log.Logger, id string) bool {
 	_ = logger
 	return peerDigestHandled(p.peers, id, p.MessageType())
 }
+func (p *round3DigestHandler) CollectMessageTypes() []types.MessageType {
+	return []types.MessageType{types.MessageType(Type_Round3)}
+}
+func (p *round3DigestHandler) IsCollectHandled(logger log.Logger, msgType types.MessageType, id string) bool {
+	_ = logger
+	if msgType != types.MessageType(Type_Round3) {
+		return false
+	}
+	return isEarlyOrStored(p.earlyRound3, p.peers, id, types.MessageType(Type_Round3))
+}
+func (p *round3DigestHandler) ReadyToFinalize() bool { return p.coFlightReady() }
 
 func (p *round3DigestHandler) HandleMessage(logger log.Logger, message types.Message) error {
+	if err := p.rejectIfEchoConflict(); err != nil {
+		return err
+	}
 	msg := getMessage(message)
+	switch msg.Type {
+	case Type_Round3Digest:
+		return p.handleDigest(logger, msg)
+	case Type_Round3:
+		return p.handleReveal(logger, msg)
+	default:
+		return errors.New("unexpected message type in round3 coflight")
+	}
+}
+
+func (p *round3DigestHandler) handleDigest(logger log.Logger, msg *Message) error {
 	id := msg.GetId()
 	peer, ok := p.peers[id]
 	if !ok {
@@ -331,14 +539,50 @@ func (p *round3DigestHandler) HandleMessage(logger log.Logger, message types.Mes
 		return err
 	}
 	peer.digestBigDelta = bd
-	return peer.AddMessage(msg)
+	if err := peer.AddMessage(msg); err != nil {
+		return err
+	}
+	if early, ok := p.earlyRound3[id]; ok {
+		delete(p.earlyRound3, id)
+		if err := p.reveal.HandleMessage(logger, early); err != nil {
+			return err
+		}
+	}
+	p.syncCoFlightFromPeers(Type_Round3Digest, Type_Round3)
+	return nil
 }
 
-func (p *round3DigestHandler) Finalize(logger log.Logger) (types.Handler, error) {
+func (p *round3DigestHandler) handleReveal(logger log.Logger, msg *Message) error {
+	id := msg.GetId()
+	if !peerDigestHandled(p.peers, id, types.MessageType(Type_Round3Digest)) {
+		p.earlyRound3[id] = msg
+		return nil
+	}
+	if err := p.reveal.HandleMessage(logger, msg); err != nil {
+		return err
+	}
+	p.syncCoFlightFromPeers(Type_Round3Digest, Type_Round3)
+	return nil
+}
+
+func (p *round3DigestHandler) broadcastPendingReveals() {
 	for id, m := range p.pendingRound3 {
 		p.peerManager.MustSend(id, m)
 	}
-	return newRound3Handler(p.round2Handler)
+}
+
+func (p *round3DigestHandler) Finalize(logger log.Logger) (types.Handler, error) {
+	if p.coFlight.HasEchoConflict() {
+		return nil, ErrEchoConflict
+	}
+	if p.coFlightComplete() {
+		return p.reveal.Finalize(logger)
+	}
+	// N/A INV: serial-legacy
+	for id, m := range p.pendingRound3 {
+		p.peerManager.MustSend(id, m)
+	}
+	return p.reveal, nil
 }
 
 func (p *round3DigestHandler) OnDigestTimeout() {

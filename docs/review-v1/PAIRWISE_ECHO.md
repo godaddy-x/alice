@@ -62,14 +62,16 @@
 | P14 | **Breaking wire** | Type 0–8 renumbered; no feature flag | `message.proto` |
 | P15 | **Mesh abort E2E** | Full-process mesh triggers Err1/Err2 (not AddMessage injection) | `sign_mesh_abort_test.go` |
 
-**Protocol flow (brief)**:
+**Protocol flow (brief)** (success path **7** stages after CoFlight redesign):
 
 ```text
-R1Digest(Echo) ──► Round1(gate) ──► R2Digest(Echo) ──► Round2(gate) ──►
-R3Digest(Echo) ──► Round3(gate) ──► [δ OK→Round4 | δ fail→Err1] ──► [sig OK→Done | sig fail→Err2]
+R1Digest ‖ Round1 ──► R2Digest ‖ Round2 ──► R3Digest ‖ Round3 ──► Round4(σ, no Echo)
+  (Digest still Echo-gated before MsgMain; Reveal co-flighted; Finalize needs echoDone∧revealDone)
 ```
 
-**Wire Type**: `Round1Digest=0 … Round4=6, Err1=7, Err2=8` (all parties must be on the same fork).
+See [CGGMP_SIGN_7RTT_COFLIGHT_DESIGN.md](./CGGMP_SIGN_7RTT_COFLIGHT_DESIGN.md).
+
+**Wire Type**: `Round1Digest=0 … Round4=6, Err1=7, Err2=8` (all parties must be on the same fork; `SignScheduleVersion=coflight-v1`).
 
 ---
 

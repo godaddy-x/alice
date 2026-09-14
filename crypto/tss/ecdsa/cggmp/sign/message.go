@@ -92,16 +92,9 @@ func (m *Message) GetEchoMessage() types.Message {
 		// Pairwise reveal — δ/Δ already in Round3Digest; skip per-message Echo.
 		return nil
 	case Type_Round4:
-		src := m.GetRound4()
-		if src == nil {
-			return nil
-		}
-		mm.Body = &Message_Round4{
-			Round4: &Round4Msg{
-				Sigmai: cloneBytes(src.GetSigmai()),
-			},
-		}
-		return mm
+		// Success-path: no global Echo on σ (7-RTT co-flight design).
+		// Verify failure enters Err2; N/A INV for CoFlight.
+		return nil
 	case Type_Err1:
 		src := m.GetErr1()
 		if src == nil {

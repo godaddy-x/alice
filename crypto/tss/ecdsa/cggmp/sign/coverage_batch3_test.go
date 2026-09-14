@@ -98,8 +98,8 @@ func TestRound1FinalizeSuccess(t *testing.T) {
 	if peerNode.round1Data == nil || peerNode.round1Data.round2Msg == nil {
 		t.Fatal("expected pending round2 message")
 	}
-	if len(pm.sent) != 1 || pm.sent[0] != peerID {
-		t.Fatalf("expected Round2 digest broadcast, got %v", pm.sent)
+	if len(pm.sent) != 2 || pm.sent[0] != peerID || pm.sent[1] != peerID {
+		t.Fatalf("expected Round2 digest + reveal coflight, got %v", pm.sent)
 	}
 }
 

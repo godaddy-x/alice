@@ -85,6 +85,7 @@ func (p *round3Handler) AbortMessageTypes() []types.MessageType {
 }
 
 func (p *round3Handler) OnAbortMessage(logger log.Logger, message types.Message) (types.Handler, error) {
+	// N/A INV: abort switch, not CoFlight Next
 	return p.onAbortErr1(logger, message)
 }
 

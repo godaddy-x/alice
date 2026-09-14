@@ -141,56 +141,52 @@ func (t *MsgMain) messageLoop(ctx context.Context) (err error) {
 	msgType := handler.MessageType()
 	msgCount := initialMsgCount(handler)
 	for {
-		// 1. Pop messages (including abort types when supported)
-		// 2. Check if the message is handled before
-		// 3. Handle the message
-		// 4. Check if we collect enough messages
-		// 5. If yes, finalize the handler. Otherwise, wait for the next message
+		// Finalize only when the barrier is satisfied:
+		// - MultiCollect: ReadyToFinalize()
+		// - otherwise: msgCount > 0 && msgCount >= required (msgCount may come from InitialMsgCount)
+		if done, nextHandler, ferr := t.maybeFinalize(handler, msgType, &msgCount); ferr != nil {
+			return ferr
+		} else if done {
+			return nil
+		} else if nextHandler != nil {
+			handler, msgType, msgCount = t.switchHandler(nextHandler, msgType)
+			continue
+		}
+
 		msg, err := t.popMessage(ctx, handler, msgType)
 		if err != nil {
 			t.logger.Warn("Failed to pop message", "err", err)
 			return err
 		}
 		id := msg.GetId()
-		logger := t.logger.New("msgType", msgType, "fromId", id)
+		gotType := msg.GetMessageType()
+		logger := t.logger.New("msgType", gotType, "fromId", id)
 
-		if msg.GetMessageType() != msgType {
+		if gotType != msgType {
+			if mch, ok := handler.(MultiCollectHandler); ok && isCollectType(mch, gotType) {
+				if mch.IsCollectHandled(logger, gotType, id) {
+					logger.Warn("The collect message is handled before")
+					return ErrDupMsg
+				}
+				if err := handler.HandleMessage(logger, msg); err != nil {
+					logger.Warn("Failed to save collect message", "err", err)
+					return err
+				}
+				continue
+			}
+
 			abortHandler, ok := handler.(AbortHandler)
 			if !ok {
 				logger.Warn("Unexpected message type")
 				return ErrBadMsg
 			}
+			// N/A INV: abort switch, not CoFlight Next
 			nextHandler, err := abortHandler.OnAbortMessage(logger, msg)
 			if err != nil {
 				logger.Warn("Failed to switch abort handler", "err", err)
 				return err
 			}
-			t.handlerLock.Lock()
-			t.currentHandler = nextHandler
-			handler = t.currentHandler
-			t.handlerLock.Unlock()
-			newType := handler.MessageType()
-			logger.Info("Change handler for abort", "oldType", msgType, "newType", newType)
-			msgType = newType
-			msgCount = initialMsgCount(handler)
-			if msgCount >= handler.GetRequiredMessageCount() {
-				nextHandler, err := handler.Finalize(logger)
-				if err != nil {
-					logger.Warn("Failed to finalize abort handler", "err", err)
-					return err
-				}
-				if nextHandler == nil {
-					return nil
-				}
-				t.handlerLock.Lock()
-				t.currentHandler = nextHandler
-				handler = t.currentHandler
-				t.handlerLock.Unlock()
-				newType = handler.MessageType()
-				logger.Info("Change handler", "oldType", msgType, "newType", newType)
-				msgType = newType
-				msgCount = initialMsgCount(handler)
-			}
+			handler, msgType, msgCount = t.switchHandler(nextHandler, msgType)
 			continue
 		}
 
@@ -206,28 +202,40 @@ func (t *MsgMain) messageLoop(ctx context.Context) (err error) {
 		}
 
 		msgCount++
-		if msgCount < handler.GetRequiredMessageCount() {
-			continue
-		}
-
-		nextHandler, err := handler.Finalize(logger)
-		if err != nil {
-			logger.Warn("Failed to go to next handler", "err", err)
-			return err
-		}
-		// if nextHandler is nil, it means we got the final result
-		if nextHandler == nil {
-			return nil
-		}
-		t.handlerLock.Lock()
-		t.currentHandler = nextHandler
-		handler = t.currentHandler
-		t.handlerLock.Unlock()
-		newType := handler.MessageType()
-		logger.Info("Change handler", "oldType", msgType, "newType", newType)
-		msgType = newType
-		msgCount = initialMsgCount(handler)
 	}
+}
+
+func (t *MsgMain) switchHandler(next types.Handler, oldType types.MessageType) (types.Handler, types.MessageType, uint32) {
+	t.handlerLock.Lock()
+	t.currentHandler = next
+	handler := t.currentHandler
+	t.handlerLock.Unlock()
+	newType := handler.MessageType()
+	t.logger.Info("Change handler", "oldType", oldType, "newType", newType)
+	return handler, newType, initialMsgCount(handler)
+}
+
+// maybeFinalize runs Finalize when the current barrier is complete.
+// done=true means protocol finished (nil next). nextHandler set means switched.
+func (t *MsgMain) maybeFinalize(handler types.Handler, msgType types.MessageType, msgCount *uint32) (bool, types.Handler, error) {
+	logger := t.logger.New("msgType", msgType)
+	if mch, ok := handler.(MultiCollectHandler); ok {
+		if !mch.ReadyToFinalize() {
+			return false, nil, nil
+		}
+	} else if *msgCount == 0 || *msgCount < handler.GetRequiredMessageCount() {
+		return false, nil, nil
+	}
+
+	nextHandler, err := handler.Finalize(logger)
+	if err != nil {
+		logger.Warn("Failed to go to next handler", "err", err)
+		return false, nil, err
+	}
+	if nextHandler == nil {
+		return true, nil, nil
+	}
+	return false, nextHandler, nil
 }
 
 func initialMsgCount(handler types.Handler) uint32 {
@@ -264,10 +272,17 @@ func (t *MsgMain) popMessage(ctx context.Context, handler types.Handler, msgType
 		msg types.Message
 		err error
 	)
+	extra := make([]types.MessageType, 0, 4)
+	if mch, ok := handler.(MultiCollectHandler); ok {
+		extra = append(extra, mch.CollectMessageTypes()...)
+	}
 	if ah, ok := handler.(AbortHandler); ok {
-		msgTypes := make([]types.MessageType, 0, len(ah.AbortMessageTypes())+1)
+		extra = append(extra, ah.AbortMessageTypes()...)
+	}
+	if len(extra) > 0 {
+		msgTypes := make([]types.MessageType, 0, len(extra)+1)
 		msgTypes = append(msgTypes, msgType)
-		msgTypes = append(msgTypes, ah.AbortMessageTypes()...)
+		msgTypes = append(msgTypes, extra...)
 		msg, err = t.msgChs.PopAny(popCtx, msgTypes...)
 	} else {
 		msg, err = t.msgChs.Pop(popCtx, msgType)

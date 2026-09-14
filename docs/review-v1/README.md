@@ -15,6 +15,7 @@
 | 3 | **[CGGMP_IA_LIMITS_AND_REMEDIATION.md](./CGGMP_IA_LIMITS_AND_REMEDIATION.md)** | IA status (4 tiers), remediation, §8 edge-case tests |
 | 4 | **[R1-FS_risk_memo.md](./R1-FS_risk_memo.md)** | IA-02 accepted risk (proof-template gap ≠ runtime weakness) |
 | 5 | **[FROST.md](./FROST.md)** | FROST open items (Echo = FR-01 closed; detail in PAIRWISE §B) |
+| 6 | **[CGGMP_SIGN_7RTT_COFLIGHT_DESIGN.md](./CGGMP_SIGN_7RTT_COFLIGHT_DESIGN.md)** | **Design**: EQ + IA, success path **7** stages (Echo‖Reveal co-flight) |
 | — | [BROKER_NODE_INTEGRATION_TEST_PLAN.md](./BROKER_NODE_INTEGRATION_TEST_PLAN.md) | L2/L3 integration (optional) |
 | — | [UPSTREAM_ISSUE_ECHO_IA.md](./UPSTREAM_ISSUE_ECHO_IA.md) | Draft English issue for getamis/alice |
 
@@ -37,6 +38,7 @@
 | CVE-2025-66017 presign API | **Out of scope** (no such API) |
 | IA-05 gate diagnostics / edge tests | **Partial** (PR-D3 / IA_LIMITS §8) |
 | signSix · Refresh · DKG Echo | **Weak / open** |
+| Sign 7-RTT CoFlight redesign | **Landed** (barrier + MultiCollect + R4 no Echo; see design doc) |
 
 ---
 

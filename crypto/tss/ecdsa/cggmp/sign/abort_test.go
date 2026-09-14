@@ -97,7 +97,7 @@ var _ = Describe("Echo message", func() {
 		Expect(echo2.(*Message).GetErr2().GetChi()).To(Equal([]byte("chi")))
 	})
 
-	It("GetEchoMessage skips Round2/Round3 reveal; echoes digests and Round4", func() {
+	It("GetEchoMessage skips Round2/Round3/Round4 reveal; echoes digests only", func() {
 		r2 := &Message{
 			Type: Type_Round2,
 			Id:   "peer-1",
@@ -158,8 +158,7 @@ var _ = Describe("Echo message", func() {
 			},
 		}
 		echo4 := r4.GetEchoMessage()
-		Expect(echo4).NotTo(BeNil())
-		Expect(echo4.(*Message).GetRound4().GetSigmai()).To(Equal([]byte("sig")))
+		Expect(echo4).To(BeNil())
 	})
 })
 

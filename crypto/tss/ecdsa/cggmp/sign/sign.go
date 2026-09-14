@@ -81,6 +81,9 @@ func NewSign(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.ECPoint, 
 	sign.MessageMain = cggmp.WrapEchoAbortCollect(ms, peerManager, collector, func(m *Message) bool {
 		return m.Type == Type_Err1 || m.Type == Type_Err2
 	}, func(authorID string) {
+		if ph.coFlight != nil {
+			ph.coFlight.MarkEchoConflict()
+		}
 		sign.storeBlame(cggmp.BlameContributionFromConfirmed(map[string]struct{}{authorID: {}}))
 	})
 	sign.r1d = r1d
@@ -209,5 +212,5 @@ func (d *Sign) Start() {
 		return
 	}
 	d.MessageMain.Start()
-	d.r1d.broadcastRound1Digest()
+	d.r1d.broadcastRound1CoFlight()
 }

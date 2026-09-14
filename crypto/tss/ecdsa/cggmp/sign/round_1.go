@@ -92,6 +92,8 @@ type round1Handler struct {
 
 	digestStore *pairwiseDigestStore
 
+	coFlight *coFlightBarrier
+
 	onAbortMsg          func(*Message)
 	onBlame             func(cggmp.BlameContribution) // Confirmed: ZK/gate/echo; Suspect: timeout/absent/Δ/ambiguous
 	ambiguousMaskPolicy cggmp.AmbiguousMaskPolicy
@@ -193,6 +195,7 @@ func newRound1Handler(threshold uint32, ssid []byte, share *big.Int, pubKey *pt.
 		peers:       peers,
 		own:         own,
 		digestStore: newPairwiseDigestStore(),
+		coFlight:    newCoFlightBarrier(),
 	}, nil
 }
 
@@ -313,11 +316,16 @@ func (p *round1Handler) Finalize(logger log.Logger) (types.Handler, error) {
 		}
 	}
 
-	// Barrier: commit Round2 digests; reveal only after all digests echoed.
+	// Barrier: commit Round2 digests and co-flight Round2 reveals (Echo‖Reveal).
 	if err := p.buildRound2DigestAndBroadcast(msgGamma); err != nil {
 		return nil, err
 	}
-	return newRound2DigestHandler(p), nil
+	r2d := newRound2DigestHandler(p)
+	r2d.broadcastPendingReveals()
+	if p.coFlight != nil {
+		p.coFlight.Reset()
+	}
+	return r2d, nil // N/A INV: serial-legacy unit tests may still call round1Handler.Finalize directly
 }
 
 func getMessage(messsage types.Message) *Message {
