@@ -150,6 +150,9 @@ func (msg *PaillierBlumMessage) Verify(ssidInfo []byte, n *big.Int) error {
 		if err != nil {
 			return err
 		}
+		if !utils.IsRelativePrime(zi, n) {
+			return ErrInvalidInput
+		}
 
 		if new(big.Int).Exp(zi, n, n).Cmp(yi) != 0 {
 			return ErrVerifyFailure
@@ -177,8 +180,17 @@ func (msg *PaillierBlumMessage) Verify(ssidInfo []byte, n *big.Int) error {
 		}
 		rightPary.Mod(rightPary, n)
 
+		// x_i ∈ Z_N^* (ZKDocs / CGGMP24-style membership; G-05)
+		xi := new(big.Int).SetBytes(x[i])
+		if err := utils.InRange(xi, big1, n); err != nil {
+			return err
+		}
+		if !utils.IsRelativePrime(xi, n) {
+			return ErrInvalidInput
+		}
+
 		// Compute: x^4 mod N
-		if new(big.Int).Exp(new(big.Int).SetBytes(x[i]), big4, n).Cmp(rightPary) != 0 {
+		if new(big.Int).Exp(xi, big4, n).Cmp(rightPary) != 0 {
 			return ErrVerifyFailure
 		}
 	}

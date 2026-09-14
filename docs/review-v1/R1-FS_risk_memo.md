@@ -1,208 +1,221 @@
-# R1-FS · GetE 非素数 Challenge — 接受风险 memo
+# R1-FS · GetE Non-Prime Challenge — Accepted-Risk Memo
 
-> **状态**：review-v1 · IA-02 闭合文档（PR-D4a 交付物）  
-> **关联**：[CGGMP_IA_LIMITS_AND_REMEDIATION.md](./CGGMP_IA_LIMITS_AND_REMEDIATION.md) §IA-02 · [CGGMP.md](./CGGMP.md) §5.4  
-> **代码**：`crypto/zkproof/paillier/affinegroupzkproof.go` · `GetE`  
-> **读者**：安全审计 / sign-off 负责人
-
----
-
-## 0. 准确状态（一句话）
-
-| 项 | 状态 |
-|----|------|
-| **代码** | 与 upstream alice **一致**（`GetE` 整数 challenge，未改） |
-| **运行期 gcd** | \(e\neq e'\) 时 \(\gcd(e-e',N)=1\) **确定性恒成立**（§2.1）；**不**影响 Verify / abort 行为 |
-| **文档 vs 注释** | 本文 / CGGMP.md 比代码注释 **更紧**（注释曾写 w.h.p.；应以本文为准） |
-| **唯一「弱」点** | 证明模板 **未按标准 FS 形式表述** → 标准模型下 soundness **无闭合论证** |
-| **不包含** | 运行期弱化、已知伪造攻击、IA 归责可轻易绕过（见 §2.5） |
-
-**接受风险 = 模板表述缺口（A）**；**≠**「运行期不安全」或「比标准 FS 实现更弱」。
+> **Status**: review-v1 · IA-02 closure document (PR-D4a deliverable)  
+> **Related**: [CGGMP_IA_LIMITS_AND_REMEDIATION.md](./CGGMP_IA_LIMITS_AND_REMEDIATION.md) §IA-02 · [CGGMP.md](./CGGMP.md) §5.4  
+> **Code**: `crypto/zkproof/paillier/affinegroupzkproof.go` · `GetE`  
+> **Audience**: security audit / sign-off owners
 
 ---
 
-## 1. 问题陈述
+## 0. Accurate Status (one sentence)
 
-Alice Paillier ZK（DecModQ / Mul / Aff 等）的 Fiat–Shamir challenge 由 `GetE` 生成：
+| Item | Status |
+|------|--------|
+| **Code** | Matches upstream alice (**unchanged** — `GetE` integer challenge) |
+| **Runtime gcd** | When \(e\neq e'\), \(\gcd(e-e',N)=1\) holds **deterministically always** (§2.1); **does not** affect Verify / abort behavior |
+| **Docs vs comments** | This memo / CGGMP.md are **tighter** than code comments (comments previously said w.h.p.; this memo is authoritative) |
+| **Only “weak” point (proof level)** | The proof template is **not stated in standard FS form** → soundness under the standard model has **no closed argument**. **Runtime is unaffected** (§2.1); “only” means **at the proof level**, **not** at the runtime level |
+| **Does not include** | Runtime weakening, known forgery attacks, or easy bypass of IA attribution (see §2.5) |
 
-- \(e \in \mathbb{Z}\)，采样约束为 \(|e| \le q/2\)（`groupOrder` \(q\) 为椭圆曲线阶，secp256k1 下 \(q \approx 2^{256}\)）；
-- **非**素数域元素，**非** \(\mathbb{Z}_N^\*\) 上均匀随机。
+**Accepted risk = template wording gap (A)**; **≠** “unsafe at runtime” or “weaker than a standard FS implementation”.
 
-标准 FS soundness 证明通常要求 challenge 取自素数阶域；本实现沿用 upstream alice 的整数 challenge 设计。  
-**接受风险的对象是「证明模板缺口」**，而非「运行期频繁触发 \(\gcd(e-e',N)\neq 1\)」，亦非「实现比标准 FS 更弱」。
+### IA-02 Reading Order
+
+```text
+Runtime safety     → §2.1 (deterministic 0)
+Generic upper bound → §2.2 (O(2^-1024))
+What we accept     → §2.3 (A/B/C)
+Worst-case outcome → §2.4 (branch 1/2)
+Forgery hardness   → §2.5 (DCR constraints)
+sign-off           → §2.4.3 (directly citable)
+```
 
 ---
 
-## 2. 量级声明（审计用）
+## 1. Problem Statement
 
-### 2.1 Alice 实际参数下的 **运行期** 上界
+Alice Paillier ZK (DecModQ / Mul / Aff, etc.) Fiat–Shamir challenges are produced by `GetE`:
 
-**声明**：在标准 Paillier 参数（2048-bit \(N = p\cdot p'\)，\(p,p'\) 各约 1024-bit 素数；`NoSmallFactor`；\(|e|,|e'|\le q/2\)）下，对 **任意** \(e \neq e'\)：
+- \(e \in \mathbb{Z}\), sampled under \(|e| \le q/2\) (`groupOrder` \(q\) is the elliptic-curve order; under secp256k1, \(q \approx 2^{256}\));
+- **Not** a prime-field element, **not** uniform over \(\mathbb{Z}_N^\*\).
+
+Standard FS soundness proofs typically require challenges from a prime-order field; this implementation follows upstream alice’s integer-challenge design.  
+**What is accepted as risk is the “proof-template gap”**, not “runtime frequently hitting \(\gcd(e-e',N)\neq 1\)”, and not “the implementation is weaker than standard FS”.
+
+---
+
+## 2. Magnitude Claims (for audit)
+
+### 2.1 **Runtime** Bound under Alice’s Actual Parameters
+
+**Claim**: Under standard Paillier parameters (2048-bit \(N = p\cdot p'\), \(p,p'\) each ~1024-bit primes; `NoSmallFactor`; \(|e|,|e'|\le q/2\)), for **any** \(e \neq e'\):
 
 \[
 \Pr\big[\gcd(e-e', N) \neq 1 \mid e \neq e'\big] = 0
 \]
 
-**推导（参数不等式，非渐近）**：
+**Derivation (parameter inequalities, not asymptotics)**:
 
-1. 令 \(\delta = e - e'\)。由 `GetE` 约束，\(|\delta| \le q < 2^{256}\)。
-2. 设 \(N = p \cdot p'\)，\(p,p'\) 为 Paillier 素因子，各 \(\approx 2^{1024}\)。
-3. 若 \(\gcd(\delta, N) > 1\)，则存在素数 \(r \mid \delta\) 且 \(r \mid N\)，故 \(r \in \{p, p'\}\)。
-4. 若 \(r \mid \delta\)，则 \(|\delta| \ge r \ge 2^{1023}\) 量级，与 \(|\delta| < 2^{256}\) 矛盾。
-5. 故 \(e \neq e'\) 时必有 \(\gcd(\delta, N) = 1\)。
+1. Let \(\delta = e - e'\). From the `GetE` constraint, \(|\delta| \le q < 2^{256}\).
+2. Let \(N = p \cdot p'\), with \(p,p'\) the Paillier prime factors, each \(\approx 2^{1024}\).
+3. If \(\gcd(\delta, N) > 1\), there exists a prime \(r \mid \delta\) and \(r \mid N\), hence \(r \in \{p, p'\}\).
+4. If \(r \mid \delta\), then \(|\delta| \ge r \ge 2^{1023}\) order of magnitude, contradicting \(|\delta| < 2^{256}\).
+5. Therefore when \(e \neq e'\) we must have \(\gcd(\delta, N) = 1\).
 
-**\(e = e'\) 情形（FS 绑定，非 gcd 随机失败）**：
+**The \(e = e'\) case (FS binding, not random gcd failure)**:
 
-- \(\gcd(0, N) = N \neq 1\)，但要求两次独立 FS 输出相同 \(e\)，等价于 **相同 transcript 输入下的 hash 碰撞 / 重放**；
-- 在 RO/FS 模型下，该事件概率 **可忽略**（由 `HashProtos` + salt 重试 `maxRetry` 绑定；见 `GetE` 实现）。
+- \(\gcd(0, N) = N \neq 1\), but requiring two independent FS outputs to equal the same \(e\) is equivalent to a **hash collision / replay under identical transcript inputs**;
+- Under the RO/FS model, that event’s probability is **negligible** (bound by `HashProtos` + salt retry `maxRetry`; see `GetE` implementation).
 
-**结论（运行期）**：DecModQ 等证明 **不会因「随机抽到 \(\gcd(e-e',N)\neq 1\)」而在 Alice 默认参数下 abort**；extractor 在 \(e\neq e'\) 时 **恒有** \(\gcd(e-e',N)=1\) 可用。
+**Conclusion (runtime)**: DecModQ and related proofs **do not abort under Alice’s default parameters because a random draw hit \(\gcd(e-e',N)\neq 1\)**; when \(e\neq e'\), the extractor **always** has \(\gcd(e-e',N)=1\) available.
 
-> **与 A 类风险的关系（见 §2.4）**：§2.1 已 **确定性** 证明 gcd 条件在默认参数下恒成立。A 类缺口 **不是**「运行期 gcd 可能失败」，而是「该条件是否足以闭合 soundness 证明」——二者必须在 sign-off 时分开表述。
+> **Relation to class-A risk (see §2.4)**: §2.1 already proves **deterministically** that the gcd condition always holds under default parameters. The class-A gap is **not** “runtime gcd may fail”, but “whether that condition suffices to close the soundness proof” — the two must be stated separately at sign-off.
 
-### 2.2 通用随机模型上界（模板引用，非 Alice 主路径）
+### 2.2 Generic Random-Model Bound (template reference; not Alice’s main path)
 
-若 **不** 施加 \(|e|\le q/2\) 约束，而令 \(\delta\) 在 \(\mathbb{Z}\) 上「与 \(N\) 同量级独立随机」（或 \(|\delta|\) 可达 \(O(\sqrt{N})\)），则 \(\gcd(\delta,N)\neq 1\) 当且仅当 \(\delta\) 被 \(N\) 的某个素因子整除：
+If the \(|e|\le q/2\) constraint is **not** imposed, and \(\delta\) is instead treated as “independent random on \(\mathbb{Z}\) at the same magnitude as \(N\)” (or \(|\delta|\) can reach \(O(\sqrt{N})\)), then \(\gcd(\delta,N)\neq 1\) iff some prime factor of \(N\) divides \(\delta\):
 
 \[
 \Pr[\gcd(\delta, N) \neq 1] \;\lesssim\; \frac{1}{p} + \frac{1}{p'} \;=\; O(2^{-1024})
 \]
 
-（对 2048-bit \(N = p\cdot p'\)，\(p,p'\sim 1024\) bit。）
+(for 2048-bit \(N = p\cdot p'\), \(p,p'\sim 1024\) bit.)
 
-**来源**：经典数论 — 随机整数与固定大素数 \(p\) 共享因子的概率 \(\le 1/p\)；两素因子并集 union bound。  
-**与 Alice 关系**：此上界 **不收紧也不放松** §2.1 的 **精确 0** 结论；仅作审计追问「极低是多少」时的 **通用量级锚点**。
+**Source**: classical number theory — the probability that a random integer shares a factor with a fixed large prime \(p\) is \(\le 1/p\); union bound over the two prime factors.  
+**Relation to Alice**: this bound **neither tightens nor relaxes** §2.1’s **exact 0** conclusion; it is only a **generic magnitude anchor** when auditors ask “how small is ‘extremely small’?”.
 
-### 2.3 我们 **实际接受** 的风险是什么
+### 2.3 What Risk We **Actually Accept**
 
-| 类别 | 说明 | 量级 |
-|------|------|------|
-| **A · 证明缺口** | 整数 challenge 非素数域；**最坏后果见 §2.4**（非运行期 gcd 事件） | **定性** — 需 sign-off |
-| **B · 运行期 gcd 失败** | §2.1：\(e\neq e'\) 时 **0**；\(e=e'\) 归 FS 绑定 | **可忽略** |
-| **C · 库级 breaking 变更** | 改 `GetE` 影响全库 Paillier ZK API | 工程成本 — 见 PR-D4b |
+| Class | Description | Magnitude |
+|-------|-------------|-----------|
+| **A · Proof gap** | Integer challenge is not over a prime field; **worst-case outcome in §2.4** (not a runtime gcd event) | **Qualitative** — needs sign-off |
+| **B · Runtime gcd failure** | §2.1: **0** when \(e\neq e'\); \(e=e'\) folds into FS binding | **Negligible** |
+| **C · Library-wide breaking change** | Changing `GetE` affects the whole-library Paillier ZK API | Engineering cost — see PR-D4b |
 
-### 2.4 A 类缺口的最坏后果（sign-off 依据）
+### 2.4 Worst-Case Outcome of Class-A Gap (sign-off basis)
 
-sign-off 的本质是「**我知道最坏情况是 X，我接受 X**」。本节界定 A 类在 **密码学层面** 的最坏边界；**运行期** 不受 §2.4 中任何分支影响（§2.1 已闭合）。
+Sign-off means “**I know the worst case is X, and I accept X**”. This section bounds class A’s **cryptographic** worst case; **runtime** is unaffected by any branch in §2.4 (§2.1 already closed).
 
-#### 2.4.1 先回答三个审计必问
+#### 2.4.1 First answer three audit must-asks
 
-| 问题 | 回答 |
-|------|------|
-| **最坏是 soundness 失效还是 extractor 失效？** | 最坏指 **soundness 在标准模型下无闭合论证**（可能伴随 extractor 步骤在教科书模板中不可形式化）。**不是**「已知存在多项式时间伪造算法」。 |
-| **若是 extractor 失效，证明是否仍然 sound？** | **分情形**（§2.4.2）。若 extractor **仅**依赖 \(\gcd(e-e',N)=1\)，则 §2.1 已证该条件恒成立，soundness **在代数前提上不受 gcd 影响**；缺口退化为「证明未按标准 FS 模板书写」。若 extractor **额外**要求 \(e-e'\in\mathbb{Z}_N^\*\) 或素数域结构，则 extractor 步骤在标准模板下 **不可直接套用**，但 **不等于** 已构造出伪造；soundness 在标准模型下 **无闭合证明**。 |
-| **若是 soundness 失效，攻击者需要什么能力？** | 在 **尚未发现具体攻击** 的前提下，最坏情景是：攻击者作为 malicious prover，在 RO/FS 模型下 **可能** 利用非标准 challenge 空间找到 **未被现有证明覆盖** 的伪造路径。所需能力上界：**标准 MPC 恶意参与者**（可任意偏离协议、自适应选择 Paillier 相关消息），**不**假设 CDH/DDH 等额外困难问题被突破。 |
+| Question | Answer |
+|----------|--------|
+| **Is the worst case soundness failure or extractor failure?** | Worst case means **soundness has no closed argument under the standard model** (possibly with extractor steps that cannot be formalized in the textbook template). **Not** “a known polynomial-time forgery algorithm exists”. |
+| **If the extractor fails, is the proof still sound?** | **Case split** (§2.4.2). If the extractor **only** needs \(\gcd(e-e',N)=1\), then §2.1 already shows that condition always holds, so soundness is **not affected by gcd at the algebraic premise**; the gap reduces to “the proof is not written in the standard FS template”. If the extractor **additionally** requires \(e-e'\in\mathbb{Z}_N^\*\) or prime-field structure, then the extractor step **cannot be applied directly** under the standard template, but that **does not equal** having constructed a forgery; soundness under the standard model has **no closed proof**. |
+| **If soundness fails, what capability does the attacker need?** | Under the premise that **no concrete attack is known**, the worst-case scenario is: a malicious prover **may**, in the RO/FS model, use the non-standard challenge space to find a forgery path **not covered by existing proofs**. Capability upper bound: a **standard malicious MPC participant** (arbitrary protocol deviation, adaptive choice of Paillier-related messages), **without** assuming CDH/DDH or similar hardness breaks. **This is an upper-bound description**; under **branch 1** that attack path is **ruled out** by §2.1 (gcd forgery is unavailable). |
 
-#### 2.4.2 两种分支（PR-D4b / 外部 review 确认归属）
+#### 2.4.2 Two branches (PR-D4b / external review confirms classification)
 
-**分支 1 — extractor 代数前提 **仅** 要求 \(\gcd(e-e',N)=1\)（\(e\neq e'\)）**
+**Branch 1 — extractor algebraic premise requires \(\gcd(e-e',N)=1\) (when \(e\neq e'\)) and nothing more**
 
-- §2.1 已 **确定性** 证明：Alice 默认参数下该条件 **恒成立**。
-- **最坏后果**：A 类风险 **退化为「证明模板未按标准 Fiat–Shamir 形式表述」** — 即审计文档/论文引用的 **表述 gap**，**不是** 运行期 soundness 失效，**不是** 已知可 exploitable 的代数漏洞。
-- **sign-off 含义**：接受「与 upstream / Kudelski 审查路径一致的 **文档级技术债**」；**不** 接受「存在已知的 Paillier ZK 伪造攻击」。
+- §2.1 already proves **deterministically**: under Alice’s default parameters this condition **always holds**.
+- **Worst-case outcome**: class-A risk **reduces to “the proof template is not stated in standard Fiat–Shamir form”** — i.e. a **wording / documentation gap** relative to audit docs / paper citations, **not** runtime soundness failure, **not** a known exploitable algebraic vulnerability.
+- **sign-off meaning**: accept “**documentation-level technical debt** consistent with the upstream / Kudelski review path”; **do not** accept “a known Paillier ZK forgery attack exists”.
 
-**分支 2 — 某 extractor **额外** 要求 \(e-e'\) 为素数或 \(e-e'\in\mathbb{Z}_N^\*\)（或等价的标准域结构）**
+**Branch 2 — some extractor **additionally** requires \(e-e'\) to be prime or \(e-e'\in\mathbb{Z}_N^\*\) (or equivalent standard field structure)**
 
-- §2.1 **仍成立**：\(\gcd(e-e',N)=1\) 在运行期恒满足；**运行期行为与分支 1 相同**。
-- **最坏后果**：对应 ZK 的 **soundness 在标准模型下无闭合论证** — 即 **无法** 在教科书 FS 框架内给出完整 extractor；**不等于** 已证明 soundness 为假。
-- **攻击者能力上界**（若 soundness  indeed 不成立时的 **理论最坏**）：malicious prover + 协议内可见信息；产出 **通过 Verify 的伪造 proof**（针对受影响的 Paillier ZK 语句）。**未** 在本 memo 或 upstream 中给出此类攻击的具体构造。
-- **sign-off 含义**：接受「**可能存在** 未被证明覆盖的伪造路径，但 **无已知实例**；与 upstream 风险 posture 一致；由 PR-D4b / 外部密码学 review **确认是否落入本分支**。
+- §2.1 **still holds**: \(\gcd(e-e',N)=1\) is always satisfied at runtime; **runtime behavior is the same as branch 1**.
+- **Worst-case outcome**: the corresponding ZK’s **soundness has no closed argument under the standard model** — i.e. one **cannot** give a complete extractor inside the textbook FS framework; **this does not equal** having proved soundness false.
+- **Attacker capability upper bound** (**theoretical worst case** if soundness indeed fails): malicious prover + information visible in-protocol; output a **forgery proof that passes Verify** (against the affected Paillier ZK statement). **This is a hypothetical description, not a known attack construction; there is currently no evidence that this scenario is reachable.** The memo end also stresses: this memo / upstream **do not** give a concrete construction of such an attack.
+- **sign-off meaning**: accept that “a forgery path **not covered by proofs may exist**, but there is **no known instance**; risk posture matches upstream; PR-D4b / external cryptographic review **confirm whether we fall into this branch**.
 
-**本 memo 立场**：**不声称** 已确定 Alice 各 `GetE` 调用点属于分支 1 还是分支 2；§2.1 对两分支 **均** 闭合运行期 gcd。分支归属是 PR-D4b 的交付目标，不是 PR-D4a 的阻塞项。
+**This memo’s position**: we **do not claim** to have determined whether each Alice `GetE` call site is branch 1 or branch 2; §2.1 closes runtime gcd for **both** branches. Branch classification is a PR-D4b deliverable, not a PR-D4a blocker.
 
-#### 2.4.3 sign-off 建议表述（可直接引用）
+#### 2.4.3 Suggested sign-off wording (directly citable)
 
-> **我接受的最坏情况是**：在标准模型下，部分 Paillier FS 证明 **可能** 无法给出闭合 soundness 论证（分支 2）；或仅为证明模板表述 gap（分支 1）。**我不接受** 已存在已知的多项式时间伪造攻击这一 stronger 命题 — 当前 **无** 此类攻击记录。  
-> **运行期**：§2.1 已证 \(\gcd(e-e',N)=1\) 在 \(e\neq e'\) 时恒成立；**不因 A 类缺口产生额外 abort 或 verify 绕过**。  
-> **闭合路径**：分支 1/2 归属由 PR-D4b + 外部 review 确认；不阻塞 sign Pairwise Echo 发版。  
-> **伪造难度（DecModQ）**：见 §2.5 — 无已知可行攻击；IA 精度主因不在 R1-FS。
+> **The worst case I accept is**: under the standard model, some Paillier FS proofs **may** lack a closed soundness argument (branch 2); or there is only a proof-template wording gap (branch 1). **I do not accept** the stronger claim that a known polynomial-time forgery attack already exists — there is currently **no** such attack on record.  
+> **Runtime**: §2.1 proves \(\gcd(e-e',N)=1\) always holds when \(e\neq e'\); the class-A gap **does not** introduce extra aborts or verify bypasses.  
+> **Closure path**: branch 1/2 classification is confirmed by PR-D4b + external review; does not block signing off Pairwise Echo release.  
+> **Forgery hardness (DecModQ)**: see §2.5 — no known feasible attack; the main IA precision gaps are not R1-FS.
 
-**§2.3 与 §2.4 关系**：§2.3 的 A/B/C 分类保留；**sign-off 负责人应依据 §2.4.3 签字**，而非仅 §2.3 表格中的「与 Kudelski 一致」一句。
+**Relation of §2.3 to §2.4**: the A/B/C taxonomy in §2.3 remains; **sign-off owners should sign against §2.4.3**, not only the “consistent with Kudelski” line in the §2.3 table.
 
-### 2.5 伪造「能通过 DecModQ Verify 的有效数」的难度（威胁模型）
+### 2.5 Hardness of Forging a “Valid Number that Passes DecModQ Verify” (threat model)
 
-本节回答 sign-off 的后续追问：**即便接受 A 类缺口，攻击者伪造 DecModQ proof 的实际难度是多少？**  
-结论前置：**当前威胁模型下无已知可行攻击**；难度 **完全取决于 §2.4.2 分支归属**；**IA 归责精度**的主要缺口仍在 IA-01 / IA-03，**不在** R1-FS。
+This section answers the follow-up after sign-off: **even after accepting the class-A gap, how hard is it in practice for an attacker to forge a DecModQ proof?**  
+Conclusion up front: **no known feasible attack under the current threat model**; hardness **depends entirely on §2.4.2 branch classification**; the main gaps for **IA attribution precision** remain IA-01 / IA-03, **not** R1-FS.
 
-#### 2.5.1 底层依赖（与分支无关）
+#### 2.5.1 Underlying assumptions (branch-independent)
 
-DecModQ 证明语句 \(Y \equiv x \pmod q\)（\(Y\) 为 Paillier 密文相关量，\(x\) 为广播标量）。Paillier 语义安全性建立在 **合数剩余类 / Decisional Composite Residuosity (DCR)** 假设上：给定 \(N,g,\omega\)，区分 \([\omega]_N\) 的 \(N\) 次剩余类与一般元素在标准参数下被认为困难。
+The DecModQ statement is \(Y \equiv x \pmod q\) (\(Y\) is Paillier-ciphertext-related; \(x\) is a broadcast scalar). Paillier semantic security rests on the **Decisional Composite Residuosity (DCR)** assumption: given \(N,g,\omega\), distinguishing the \(N\)-th residue class of \([\omega]_N\) from a general element is believed hard under standard parameters.
 
-更 operational 的表述：从 Paillier 密文 **反推随机明文** 或构造 **不满足语句却通过 Verify** 的密文—证明对，在缺少 trapdoor 时等价于破坏 DCR / 求解与 **RSA mod \(N\)** 同量级的 **\(N\) 次根** 类问题 — **远高于** 在允许 challenge 空间内做 gcd 代数 trick 的难度。
+More operationally: recovering random plaintext from a Paillier ciphertext, or constructing a ciphertext–proof pair that **fails the statement yet passes Verify**, without the trapdoor, is equivalent to breaking DCR / solving an **\(N\)-th root**-class problem of the same magnitude as **RSA mod \(N\)** — **far harder** than algebraic gcd tricks inside the allowed challenge space.
 
-#### 2.5.2 分分支：FS challenge 结构能否单独打开伪造路径
+#### 2.5.2 By branch: can FS challenge structure alone open a forgery path?
 
-| 分支 | 伪造 DecModQ proof 的难度 | 理由 |
-|------|---------------------------|------|
-| **分支 1**（extractor **仅**需 \(\gcd(e-e',N)=1\)） | **代数上不可经 gcd 路径利用** | 要利用「坏」challenge 对 \((e,e')\) 使 \(\gcd(e-e',N)>1\)，攻击者须在 `GetE` 允许空间内找到此类对；§2.1 **确定性** 排除（\(e\neq e'\) 时恒为 1）。FS 层面 **简单伪造路径被堵死**；剩余难度 **归 Paillier/DCR** |
-| **分支 2**（额外要求素数域 / \(\mathbb{Z}_N^\*\) 结构） | **无已知构造**；非「容易/困难」二元，而是 **证明工具未覆盖** | 标准模型下无闭合 soundness 论证 ⇒ **理论上可能存在** 未被证明排除的伪造角；**当前无人给出具体构造**。文献中 non-standard challenge 空间 **可能** 削弱 soundness error（需重复 \(O(\log p)\) 次等），但需 **非常具体的设计缺陷** 才可 exploit — Alice 实现 **无** 此类已知缺陷实例 |
+| Branch | Hardness of forging a DecModQ proof | Rationale |
+|--------|--------------------------------------|-----------|
+| **Branch 1** (extractor needs **only** \(\gcd(e-e',N)=1\)) | **Algebraically not exploitable via the gcd path** | To exploit a “bad” challenge pair \((e,e')\) with \(\gcd(e-e',N)>1\), the attacker must find such a pair inside the space allowed by `GetE`; §2.1 **deterministically** rules this out (always 1 when \(e\neq e'\)). At the FS layer the **simple forgery path is blocked**; remaining hardness **falls to Paillier/DCR** |
+| **Branch 2** (additional prime-field / \(\mathbb{Z}_N^\*\) structure required) | **No closed argument**; therefore no quantitative “easy/hard” judgment; **no known construction today** | **Primary**: under the standard model, soundness **proof machinery does not cover** (no closed argument) ⇒ **Secondary**: one cannot assert “easy” or “hard”, only uncertainty; **additional fact**: nobody has given a concrete construction. Literature notes that non-standard challenge spaces **may** weaken soundness error (e.g. needing \(O(\log p)\) repetitions), but exploitation requires a **very specific design flaw** — Alice’s implementation has **no** known instance of such a flaw |
 
-#### 2.5.3 实际判断（集成 / IA 视角）
+#### 2.5.3 Practical judgment (integration / IA view)
 
-攻击者若要伪造通过 Verify 的 DecModQ「有效数」，需 **同时** 满足：
+To forge a DecModQ “valid number” that passes Verify, an attacker must **simultaneously** achieve:
 
-1. 破坏 Paillier/DCR（或等价求解 \(N\) 次根类难题），**或**
-2. 利用 FS challenge 结构缺陷构造伪造 transcript。
+1. Break Paillier/DCR (or equivalently solve an \(N\)-th-root-class hard problem), **or**
+2. Exploit a defect in FS challenge structure to forge a transcript.
 
-其中 (2) 的 gcd 利用路径已被 §2.1 排除；(1) 与 R1-FS **正交**，且 **无已知多项式时间算法**。
+Path (2)’s gcd exploitation is ruled out by §2.1; (1) is **orthogonal** to R1-FS and has **no known polynomial-time algorithm**.
 
-**分支 2 剩余风险** 因此是 **证明模板覆盖问题**（「未被证明不可能」），**不是** 已量化的「攻击者能力问题」 — 与 §2.4.1「不是已知存在伪造算法」一致。
+**Remaining branch-2 risk** is therefore a **proof-template coverage problem** (“not proven impossible”), **not** a quantified “attacker capability problem” — consistent with §2.4.1’s “not a known forgery algorithm”.
 
-**对 IA 的含义**：
+**Implications for IA**:
 
-- R1-FS **不会** 使 malicious 方 **轻易** 通过伪造 DecModQ 绕过 Verify 并误导 `GetBlamedPeers`；
-- **归责不精确** 的主因仍是 **IA-01**（mask 多解启发式）与 **IA-03**（Err1 全局 Δ over-blame），见 [CGGMP_IA_LIMITS_AND_REMEDIATION.md](./CGGMP_IA_LIMITS_AND_REMEDIATION.md) §IA-01 · §IA-03。
+- R1-FS **does not** let a malicious party **easily** forge DecModQ to bypass Verify and mislead `GetBlamedPeers`;
+- The main causes of **imprecise attribution** remain **IA-01** (mask multi-solution heuristics) and **IA-03** (Err1 global Δ over-blame); see [CGGMP_IA_LIMITS_AND_REMEDIATION.md](./CGGMP_IA_LIMITS_AND_REMEDIATION.md) §IA-01 · §IA-03.
 
-#### 2.5.4 一句话（可并入 sign-off 附件）
+#### 2.5.4 One-liner (may be attached to sign-off)
 
-> **伪造 DecModQ 有效 proof**：分支 1 下 gcd 伪造路径 **不可能**；分支 2 下 **无已知构造**，难度下界仍受 Paillier/DCR 约束。R1-FS 不是当前 IA 工程化归责的主要精度瓶颈。
-
----
-
-## 3. 影响范围
-
-| 组件 | 影响 |
-|------|------|
-| `crypto/zkproof/paillier/*` | 所有 `GetE` 调用点（DecModQ, Mul, Aff, …） |
-| CGGMP sign IA | DecModQ 自证 / Err1 路径依赖 FS soundness |
-| CGGMP DKG / refresh / signSix | 同库 ZK，非 sign-only |
-| FROST | 不经过 Paillier `GetE`（**不在** 本 memo 范围） |
+> **Forging a valid DecModQ proof**: under branch 1 the gcd forgery path is **impossible**; under branch 2 there is **no known construction**, and the hardness lower bound remains constrained by Paillier/DCR. R1-FS is not the main precision bottleneck for current IA engineering attribution.
 
 ---
 
-## 4. 与 upstream 的 diff
+## 3. Impact Scope
 
-| 项 | upstream getamis/alice | 本 fork |
-|----|------------------------|---------|
-| `GetE` 算法 | \(e\in[-q/2,q/2]\) 整数 | **未改** |
-| 接受风险文档 | 分散在 CGGMP 审查 | **本文 + IA-02 四档「接受风险」** |
-| 闭合路径 | — | PR-D4a（本文）✅ · PR-D4b（prime challenge PoC） |
-
----
-
-## 5. 后续（PR-D4b，不阻塞主线）
-
-- 分支 PoC：`GetE` 改为素数 challenge（或 \(\mathbb{Z}_q^\*\) 采样 + 与现有 transcript 兼容）；
-- **首要目标**：逐 ZK 调用点确认 §2.4.2 **分支 1 vs 分支 2** 归属（DecModQ / Mul / Aff …）；
-- 评估：全库 ZK 回归、性能、`maxRetry` 行为、与旧 proof 互操作；
-- **不** 在本 memo 中承诺 PoC 时间表 — 仅定义交付物边界。
+| Component | Impact |
+|-----------|--------|
+| `crypto/zkproof/paillier/*` | All `GetE` call sites (DecModQ, Mul, Aff, …) |
+| CGGMP sign IA | DecModQ self-proof / Err1 paths depend on FS soundness |
+| CGGMP DKG / refresh / signSix | Same-library ZK, not sign-only |
+| FROST | Does not go through Paillier `GetE` (**out of** this memo’s scope) |
 
 ---
 
-## 6. 参考文献（推导来源）
+## 4. Diff vs Upstream
 
-1. Alice 实现：`crypto/zkproof/paillier/affinegroupzkproof.go` — `GetE`（\(|e|\le q/2\) 约束）。
-2. CGGMP 审查记录：[CGGMP.md](./CGGMP.md) §5.3–5.4（R1-FS 条目）。
-3. 通用 \(\gcd\) 概率：随机 \(\delta\) 被 \(p\)-bit 素数 \(p\) 整除的概率 \(\le 2^{-p}\)（union bound 见 §2.2）。
-4. Fiat–Shamir 标准模板：challenge 取自素数阶域；A 类最坏后果界定见 **§2.4**。
+| Item | upstream getamis/alice | This fork |
+|------|------------------------|-----------|
+| `GetE` algorithm | \(e\in[-q/2,q/2]\) integer | **Unchanged** |
+| Accepted-risk documentation | Scattered in CGGMP reviews | **This memo + IA-02 four-tier “accepted risk”** |
+| Closure path | — | PR-D4a (this memo) ✅ · PR-D4b (prime challenge PoC) |
 
 ---
 
-## 修订
+## 5. Follow-ups (PR-D4b; does not block mainline)
 
-| 日期 | 说明 |
-|------|------|
-| 2026-09-13 | 初版：量化上界 §2.1–2.2、sign-off 表述 §2.3、PR-D4a 交付 |
-| 2026-09-13 | §2.4 A 类最坏后果界定 + §2.1 与 A 类边界点破；§2.4.3 sign-off 引用段 |
-| 2026-09-13 | §2.5 DecModQ 伪造难度 / 威胁模型；IA 精度与 R1-FS 解耦 |
-| 2026-09-13 | §0 准确状态表：模板弱 ≠ 运行期弱；文档比注释更紧 |
+- Branch PoC: change `GetE` to a prime challenge (or \(\mathbb{Z}_q^\*\) sampling + compatibility with existing transcripts);
+- **Primary goal**: per ZK call site, confirm §2.4.2 **branch 1 vs branch 2** classification (DecModQ / Mul / Aff …);
+- Evaluate: whole-library ZK regression, performance, `maxRetry` behavior, interoperability with old proofs;
+- **Do not** commit to a PoC timeline in this memo — only define deliverable boundaries.
+
+---
+
+## 6. References (derivation sources)
+
+1. Alice implementation: `crypto/zkproof/paillier/affinegroupzkproof.go` — `GetE` (\(|e|\le q/2\) constraint).
+2. CGGMP review notes: [CGGMP.md](./CGGMP.md) §§5.3–5.4 (R1-FS entry).
+3. Generic \(\gcd\) probability: probability that random \(\delta\) is divisible by a \(p\)-bit prime \(p\) is \(\le 2^{-p}\) (union bound in §2.2).
+4. Standard Fiat–Shamir template: challenges from a prime-order field; class-A worst-case bound in **§2.4**.
+
+---
+
+## Revisions
+
+| Date | Notes |
+|------|-------|
+| 2026-09-13 | Initial: quantitative bounds §2.1–2.2, sign-off wording §2.3, PR-D4a delivery |
+| 2026-09-13 | §2.4 class-A worst-case bound + clarify §2.1 vs class-A boundary; §2.4.3 sign-off citation block |
+| 2026-09-13 | §2.5 DecModQ forgery hardness / threat model; decouple IA precision from R1-FS |
+| 2026-09-13 | §0 accurate status table: template weak ≠ runtime weak; docs tighter than comments |
+| 2026-09-14 | Wording tighten: hypothetical worst ≠ known attack; “only weak” limited to proof layer; §2.5.2 primary/secondary; §0 reading order |
+| 2026-09-14 | English edition |

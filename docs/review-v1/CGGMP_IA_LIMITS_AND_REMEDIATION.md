@@ -1,274 +1,286 @@
-# CGGMP · Pairwise Echo · IA — 问题清单与 remediation
+# CGGMP · Pairwise Echo · IA — Issue List and Remediation
 
-> **状态**：review-v1 增补（2026-09-13）  
-> **范围**：`crypto/tss/ecdsa/cggmp/sign` · `crypto/tss/pairwise` · `types/message` · Scheme A′ IA  
-> **关联**：[CGGMP.md](./CGGMP.md) · [PAIRWISE_ECHO.md](./PAIRWISE_ECHO.md) · [FROST_PAIRWISE_ECHO.md](./FROST_PAIRWISE_ECHO.md)  
-> **读者**：安全审计 / MPC 集成 / 运维  
-> **目的**：统一 **问题状态语义**、暴露 **IA 可证明归责边界**、给出 **可执行 remediation**
+> **Status**: review-v1 supplement (2026-09-13)  
+> **Scope**: `crypto/tss/ecdsa/cggmp/sign` · `crypto/tss/pairwise` · `types/message` · Scheme A′ IA  
+> **Related**: [README.md](./README.md) · [CGGMP.md](./CGGMP.md) · [PAIRWISE_ECHO.md](./PAIRWISE_ECHO.md) · [FROST.md](./FROST.md) · [R1-FS_risk_memo.md](./R1-FS_risk_memo.md)  
 
----
-
-## 1. 结论（对外口径）
-
-| 层级 | 承诺 | 说明 |
-|------|------|------|
-| **P0** | 不坏签 / 不泄钥 | 失败路径 abort；`GetResult` 仅在 `StateDone` |
-| **P1** | 防 equivocation | Pairwise Digest + Digest Echo + reveal gate（sign 已落地） |
-| **P2** | Identifiable Abort | **工程化归责**：多数恶意路径可 `GetBlamedPeers()`；**非**论文级「唯一可证明归责」 |
-
-**禁止对外表述**：「任意作恶方必被密码学唯一归责」。  
-**允许对外表述**：「失败可 abort；常见作恶/不一致广播可指向 suspect peer；已知启发式与 over-blame 见本文 §3–§4」。
-
-**API 口径（PR-D1 / PR-D3 目标）**：
-
-- 集成层 **不得** 将 `GetBlamedPeers()` 的混合集合直接当作法庭级「确证作恶」；
-- 目标 API：`GetBlameResult()` 返回 `{ Confirmed, Suspect }`（或 `GetConfirmedPeers()` / `GetSuspectPeers()`）；
-- **Confirmed**：DecModQ/ZK 失败、gate 密码学失败、明确 sender blame 等 **密码学路径**；
-- **Suspect**：digest 超时、Err2 缺席、mask 多解 cohort、全局 Δ over-blame 等 **运维 hint**；
-- 过渡期：`GetBlamedPeers()` = `Confirmed ∪ Suspect`（兼容），文档标注 **deprecated for penalty logic**。
+> **Audience**: security audit / MPC integration / operations  
+> **Purpose**: unify **issue status semantics**, expose **IA attributable blame boundaries**, provide **actionable remediation**
 
 ---
 
-## 2. 状态语义（四档）
+## 1. Conclusions (external messaging)
 
-旧文档单用 ✅ 易与「IA 完备」混淆。本清单统一：
+| Tier | Commitment | Notes |
+|------|------------|-------|
+| **P0** | No bad signatures / no key leakage | Abort on failure paths; `GetResult` only in `StateDone` |
+| **P1** | Anti-equivocation | Pairwise Digest + Digest Echo + reveal gate (landed for sign) |
+| **P2** | Identifiable Abort | **Engineering attribution**: most malicious paths can use `GetBlamedPeers()`; **not** paper-grade “uniquely provable attribution” |
 
-| 状态 | 含义 |
-|------|------|
-| **已修** | 代码 + 单测闭环；剩余风险仅理论级 |
-| **部分** | 已缓解主风险（如 DoS、多数 blame 路径），但 IA soundness / 覆盖未闭合 |
-| **待修** | 有明确代码或文档缺口，应排期 |
-| **接受风险** | 已知密码学/工程边界；需 sign-off 理由与影响范围 |
+**Forbidden external claim**: “Any malicious party is always uniquely attributed by cryptography.”  
+**Allowed external claim**: “Failures abort; common malice / inconsistent broadcasts can point to a suspect peer; known heuristics and over-blame are in §3–§4 of this document.”
 
----
+**API wording (PR-D1 / PR-D3 goals)**:
 
-## 3. 主问题清单
-
-### 3.1 安全审查遗留（F / M 系列）
-
-| ID | 级 | 问题 | 状态 | 说明 |
-|----|-----|------|------|------|
-| F-01 | 高 | Echo / Pairwise Digest | **部分** | sign ✅；signSix / refresh **待修**（仍弱 Echo） |
-| F-02 | 中 | Sign 入口 ped 校验 | **已修** | `ValidateAllPed` |
-| F-03 | 中 | DKG Schnorr commitment | **已修** | 不再 `return nil` 静默 |
-| M-01 | 中 | Round3 Delta 字符串 DoS | **已修** | `ParseBigIntString`；**≠** IA 精确归责 |
-| F-04 | 中 | Err 广播收集 | **已修** | Err1/Err2 状态机 |
-| F-05 | 中 | signSix Err2 Type | **已修** | `round_6.go` |
-| M-02 | 中 | partialPubKey 校验 | **已修** | Sign 入口 `ValidatePublicKey` |
-| F-06 | 低 | msg 进 ssid | **已修** | `ComputeSignSSID` |
-| F-07 | 低 | Refresh Echo | **待修** | 无 Pairwise Digest |
-| F-08 | 低 | Refresh 集成 | **待修** | 集成层 warm / 材料一致性 |
-
-### 3.2 IA / Pairwise 专项（本审查新增 IA-xx）
-
-| ID | 级 | 问题 | 状态 | 影响 |
-|----|-----|------|------|------|
-| **IA-01** | 高 | PublicX / mask 枚举 **首个 VerifyModQ 成功即返回** | **部分** | PR-D1：全量枚举 + AmbiguousMaskPolicy + BlameResult；方案 C（唯一性引理）仍待 |
-| **IA-02** | 高 | **R1-FS**：`GetE` 非素数 challenge | **接受风险** | 仅证明模板无闭合论证；运行期 gcd 恒成立；非 IA 精度主因 |
-| **IA-03** | 中 | Err1 **精确归责**有限（DecModQ 自证；∑δ≠Δ over-blame） | **部分** | IA 卖点被高估 |
-| **IA-04** | 中 | Digest **超时 blame**（慢/分区 vs 恶意不发） | **部分** | 可用性 / 误惩罚 |
-| **IA-05** | 中 | `gateEdgeDigest` store 缺失 **单边 blame reveal 方** | **部分** | 极端路由下可能错方向 |
-| **IA-06** | 中 | Err2 **缺席归责**（`blameAbsentSenders`） | **部分** | 缺席 ≠ 作恶 |
-| **IA-07** | 低 | 文档 ✅ 与 IA 能力混用 | **待修** | 审计友好度（本文即 remediation） |
-| **IA-08** | 低 | R1 Checklist 未覆盖 w-Weak / 等价类 | **待修** | 见 §6 |
-
-### 3.3 Pairwise Echo（PE-xx，与 IA 正交）
-
-| ID | 级 | 问题 | 状态 |
-|----|-----|------|------|
-| PE-01 | — | CGGMP sign R1–R3 Digest 双屏障 | **已修** |
-| PE-02 | — | FROST sign R1–R2 Digest 双屏障 | **已修** |
-| PE-03 | — | DKG / Refresh Pairwise | **待修**（非 P0） |
-| PE-04 | — | signSix Pairwise | **待修** |
+- Integration layers **must not** treat the mixed set from `GetBlamedPeers()` as courtroom-grade “confirmed malice”;
+- Target API: `GetBlameResult()` returns `{ Confirmed, Suspect }` (or `GetConfirmedPeers()` / `GetSuspectPeers()`);
+- **Confirmed**: DecModQ/ZK failures, cryptographic gate failures, explicit sender blame, and other **cryptographic paths**;
+- **Suspect**: digest timeouts, Err2 absence, multi-solution mask cohorts, global Δ over-blame, and other **ops hints**;
+- Transition: `GetBlamedPeers()` = `Confirmed ∪ Suspect` (compatibility); document as **deprecated for penalty logic**.
 
 ---
 
-## 4. 分项 remediation
+## 2. Status semantics (four tiers)
 
-### IA-01 · PublicX / mask 枚举唯一性
+Older docs used a bare ✅ that was easy to confuse with “IA complete.” This list unifies:
 
-**现状**（`sign/err_helpers.go` · `matchDecModQWithBetaCorrection`）：
-
-- 对 `c_j ∈ {0,1}`（≤8 远端 peer → ≤256 mask）枚举；
-- **`VerifyModQ` 第一次成功即 `return true`**（early exit）；
-- 文档 §4 写「首个匹配即返回」，与实现一致。
-
-**风险**：
-
-- 若存在 **两个 mask** 均使 DecModQ 验证通过，则归责依赖 **枚举顺序**，非可证明唯一；
-- §5.2「\|Y\|<8N 唯一 lift」约束的是 **Y 的代表元**，**不推出 c 向量唯一**。
-
-**方案（按优先级）**：
-
-| 方案 | 工作 | 建议 |
-|------|------|------|
-| **A · 文档** | 在 CGGMP.md / 集成规范标注「mask 多解 = 不精确 blame」 | **立即** |
-| **B · 保守实现** | 枚举 **全部** mask（先找第一个再扫完；≥2 即 `MaskAmbiguous`）；0 → **Confirmed** blame sender；**>1 → 不精确 blame**（见下 **默认策略**） | **已落地（PR-D1）** |
-| **C · 密码学** | 补引理：在 `MaxIARemotePeers=8` + Paillier 参数下 mask 唯一（或 w.h.p. 唯一） | **P2 研究**；未闭合前不得标「已修」 |
-
-**多 mask 默认策略（PR-D1 必须写死，禁止实现者即兴）**：
-
-| 策略 | Confirmed | Suspect | 运维 | 适用 |
-|------|-----------|---------|------|------|
-| **`SuspectAllErr`（默认）** | **空集** | **本轮 Err 发送者 − Confirmed** | `AmbiguousMask` 告警 | 生产默认：不作密码学确证，但 cohort 高概率含作恶者 |
-| `SuspectNone` | 空集 | 空集 | 同上 + **必须**人工介入 | 保守部署：零误伤 suspect |
-| `ConfirmAllErr` | cohort → Confirmed | 空集 | 告警 | **仅** `-tags alice_ia_debug`；生产 `SetAmbiguousMaskPolicy` **强制 remap → SuspectAllErr** |
-
-- Alice：`crypto/tss/blame` · `AmbiguousMaskPolicy`，默认 **`SuspectAllErr`**；
-- 生产构建：`ConfirmAllErr` **不可用**（`policy_prod.go`）；调试构建：`-tags alice_ia_debug`；
-- **禁止**默认 `ConfirmAllErr` — 与 §1「非唯一可证归责」冲突。
-
-**验收**：
-
-- 单测：`TestGetBlameResultSplitsDisjoint`（Confirmed ∩ Suspect = ∅）；
-- 单测：`TestAmbiguousMaskPolicyCohortExcludesConfirmed`（cohort = Err − Confirmed）；
-- 单测：`TestAmbiguousMaskPolicyConfirmAllErrRemappedInProd`；
-- Benchmark 仍保留 `MatchDecModQMaskEnum8`（最坏 256；实现为先找第一个再扫完，≥2 提前返回 Ambiguous）。
+| Status | Meaning |
+|--------|---------|
+| **Fixed** | Code + unit tests closed; remaining risk is theoretical only |
+| **Partial** | Main risk mitigated (e.g. DoS, most blame paths), but IA soundness / coverage not closed |
+| **Open** | Clear code or documentation gap; should be scheduled |
+| **Accepted risk** | Known cryptographic/engineering boundary; needs sign-off rationale and impact scope |
 
 ---
 
-### IA-02 · R1-FS Challenge 非素数（Accepted Risk）
+## 3. Primary issue list
 
-**现状**（`crypto/zkproof/paillier` · `GetE`）：
+### 3.1 Security review leftovers (F / M series)
 
-- 代码与 **upstream 一致**：Fiat–Shamir challenge \(e \in [-q/2,q/2]\) **整数**，**非素数**；
-- §2.1（memo）：\(e\neq e'\) 时 \(\gcd(e-e',N)=1\) **确定性恒成立**（非 w.h.p.）；**不影响运行期**；
-- **唯一弱点**：证明模板未按标准 FS 形式表述 → 标准模型 soundness **无闭合论证**；**无已知攻击**；
-- **未改 GetE** — 影响 **整个 alice 库** 的 Paillier ZK，非仅 IA。
+| ID | Sev | Issue | Status | Notes |
+|----|-----|-------|--------|-------|
+| F-01 | High | Echo / Pairwise Digest | **Partial** | sign ✅; signSix / refresh **Open** (still weak Echo) |
+| F-02 | Med | Sign entry ped validation | **Fixed** | `ValidateAllPed` |
+| F-03 | Med | DKG Schnorr commitment | **Fixed** | No longer silent `return nil` |
+| M-01 | Med | Round3 Delta string DoS | **Fixed** | `ParseBigIntString`; **≠** precise IA attribution |
+| F-04 | Med | Err broadcast collection | **Fixed** | Err1/Err2 state machine |
+| F-05 | Med | signSix Err2 Type | **Fixed** | `round_6.go` |
+| M-02 | Med | partialPubKey validation | **Fixed** | Sign entry `ValidatePublicKey` |
+| F-06 | Low | msg into ssid | **Fixed** | `ComputeSignSSID` |
+| F-07 | Low | Refresh Echo | **Open** | No Pairwise Digest |
+| F-08 | Low | Refresh integration | **Open** | Integration-layer warm / material consistency |
 
-**Accepted Risk 记录（需 sign-off）** — 量化 memo：[R1-FS_risk_memo.md](./R1-FS_risk_memo.md)（§0 准确状态表）
+### 3.2 IA / Pairwise focus (IA-xx newly added in this review)
 
-| 项 | 内容 |
-|----|------|
-| **影响** | DecModQ / Mul / Aff 等 FS 证明；**证明模板**使用非素数整数 challenge（与 upstream 一致） |
-| **运行期 \(\gcd(e-e',N)\neq 1\)** | Alice 默认参数下 \(e\neq e'\) 时 **概率 = 0**（\(|e-e'|\le q\ll \min(p,p')\)）；\(e=e'\) 归 FS 绑定，非随机 gcd 事件 |
-| **通用随机上界（模板）** | 若无 \(\|e\|\le q/2\) 约束，\(\Pr[\gcd\neq 1]=O(2^{-1024})\)（2048-bit \(N=p\cdot p'\) union bound） |
-| **实际接受对象** | **证明模板表述缺口（A）** — 最坏后果见 memo **§2.4**；**≠** 运行期弱化；gcd（B）可忽略 |
-| **「弱」的精确定义** | 仅指标准模型下 **无闭合 soundness 论证**；代码行为与 upstream 相同；文档比旧注释更紧 |
-| **伪造 DecModQ proof** | memo **§2.5**：分支 1 下 gcd 路径不可能；分支 2 无已知构造；**非 IA 归责主因** |
-| **IA 归责关联** | R1-FS **不**使恶意方轻易伪造 DecModQ 误导 blame；精度缺口在 **IA-01 / IA-03** |
-| **为何不阻塞 sign 发版** | 与 upstream alice 一致；改 GetE 为库级 breaking 变更 |
-| **闭合路径** | PR-D4a memo ✅ · PR-D4b prime challenge PoC（独立分支） |
+| ID | Sev | Issue | Status | Impact |
+|----|-----|-------|--------|--------|
+| **IA-01** | High | PublicX / mask enum **returns on first VerifyModQ success** | **Partial** | PR-D1: full enum + AmbiguousMaskPolicy + BlameResult; Option C (uniqueness lemma) still pending |
+| **IA-02** | High | **R1-FS**: `GetE` non-prime challenge | **Accepted risk** | No closed proof-layer argument; runtime gcd always holds; attribution precision see IA-01/03 (memo §2.5.3) |
+| **IA-03** | Med | Err1 **precise attribution** is limited (DecModQ self-check; ∑δ≠Δ over-blame) | **Partial** | IA selling points overstated |
+| **IA-04** | Med | Digest **timeout blame** (slow/partition vs malicious silence) | **Partial** | Availability / false penalties |
+| **IA-05** | Med | `gateEdgeDigest` store miss **unilaterally blames reveal side** | **Partial** | Extreme routing may blame wrong direction |
+| **IA-06** | Med | Err2 **absence attribution** (`blameAbsentSenders`) | **Partial** | Absence ≠ malice |
+| **IA-07** | Low | Docs ✅ conflated with IA capability | **Open** | Audit friendliness (this doc is the remediation) |
+| **IA-08** | Low | R1 Checklist omits w-Weak / equivalence classes | **Open** | See §6 |
 
-**方案**：
+### 3.3 Pairwise Echo (PE-xx, orthogonal to IA)
 
-| 优先级 | 动作 |
-|--------|------|
-| P0 | [R1-FS_risk_memo.md](./R1-FS_risk_memo.md) + CGGMP.md §5.4 标 **接受风险** |
-| P1 | 外部密码学 review 对 memo **§2.4.3** sign-off |
-| P2 | PR-D4b：`GetE` prime challenge PoC（不阻塞主线） |
-
----
-
-### IA-03 · Err1 精确归责能力
-
-**现状**（`sign/err_process.go` · `ProcessErr1Msg`）：
-
-1. **DecModQ 路径**：验证 Err1 广播者 **自洽**（本地密文 ↔ 广播 \(x\)）— **自证/自曝**，**不**直接指认上游 MtA 作恶者；
-2. **Mul/Aff ZK 失败**：应在 **Round1/2** 已 blame（正常路径）；
-3. **全局 \(\sum\delta \neq \Delta\)**：DecModQ 全通过后，**所有远端 Err1 发送者**入 `errPeers` — **粗粒度 over-blame**。
-
-**与 M-01 区分**：
-
-| 项 | M-01 | IA-03 |
-|----|------|-------|
-| 问题 | 畸形 Delta → panic DoS | 谁该为 δ 不一致负责 |
-| 修复 | 解析 error | **未**精确到单 peer |
-| 状态 | **已修** | **部分** |
-
-**方案**：
-
-| 优先级 | 动作 |
-|--------|------|
-| P0 | 问题表单独列 IA-03；禁止把 M-01 ✅ 读成 IA 完备 |
-| P1 | 文档 + `GetBlamedPeers` 注释：Err1 全局 Δ 失败 = **suspect set**，非法庭证据 |
-| P2 | 研究论文 Err1 能否在 DecModQ 全过情况下指认 MtA 作恶者（可能需额外 ZK） |
+| ID | Sev | Issue | Status |
+|----|-----|-------|--------|
+| PE-01 | — | CGGMP sign R1–R3 Digest dual barrier | **Fixed** |
+| PE-02 | — | FROST sign R1–R2 Digest dual barrier | **Fixed** |
+| PE-03 | — | DKG / Refresh Pairwise | **Open** (not P0) |
+| PE-04 | — | signSix Pairwise | **Open** |
 
 ---
 
-### IA-04 · Digest 超时 blame
+## 4. Per-item remediation
 
-**现状**：
+### IA-01 · PublicX / mask enumeration uniqueness
 
-- `MsgMain.SetAbortTimeout`（默认 **2 分钟**）作用于 `DigestBarrierHandler`；
-- 超时 → `OnDigestTimeout` → blame **未在该轮发出 digest 的 peer**；
-- **无法区分**恶意不发 vs 网络慢/分区。
+**Current state** (`sign/err_helpers.go` · `matchDecModQWithBetaCorrection`):
 
-**与 broker 层关系**：
+- Enumerate `c_j ∈ {0,1}` (≤8 remote peers → ≤256 masks);
+- **`VerifyModQ` returns `true` on first success** (early exit);
+- Doc §4 says “return on first match,” matching the implementation.
 
-- broker **JWT WS 掉线** → `abortMpcTask`（**秒级**），通常 **先于** 2 分钟；
-- 2 分钟主要覆盖 **「仍显示在线但不发 digest」** 或 **无 broker abort 的测试/分区**。
+**Risk**:
 
-**方案**：
+- If **two masks** both pass DecModQ verification, attribution depends on **enumeration order**, not provable uniqueness;
+- §5.2 “\|Y\|<8N unique lift” constrains the **representative of Y**, and **does not imply uniqueness of the c vector**.
 
-| 优先级 | 动作 |
-|--------|------|
-| P0 | 集成文档：digest 超时 blame = **best-effort**；**不得**单独作为经济惩罚唯一依据 |
-| P1 | `SetAbortTimeout` 可配置；生产建议 **30s–120s** 按 RTT 调参 |
-| P1 | broker 可选：**sign 阶段 protocol idle 超时**（有 WS 但 long time 无 mpc wire） |
-| P1 | 超时 blame 写入 **Suspect**（非 Confirmed）；见 §4.7 API |
-| P2 | broker `BlamedNodes[]` 携带 suspect/confirmed 标签（INT-04） |
+**Options (by priority)**:
+
+| Option | Work | Recommendation |
+|--------|------|----------------|
+| **A · Docs** | Mark in CGGMP.md / integration specs: “multi-solution mask = imprecise blame” | **Immediate** |
+| **B · Conservative impl** | Enumerate **all** masks (find first, then finish scan; ≥2 → `MaskAmbiguous`); 0 → **Confirmed** blame sender; **>1 → imprecise blame** (see **default policy** below) | **Landed (PR-D1)** |
+| **C · Cryptography** | Prove lemma: under `MaxIARemotePeers=8` + Paillier params, mask is unique (or w.h.p. unique) | **P2 research**; must not mark **Fixed** until closed |
+
+**Multi-mask default policy (PR-D1 must hard-code; no implementer improvisation)**:
+
+| Policy | Confirmed | Suspect | Ops | Fit |
+|--------|-----------|---------|-----|-----|
+| **`SuspectAllErr` (default)** | **Empty** | **This round’s Err senders − Confirmed** | `AmbiguousMask` alert | Production default: no crypto confirmation, but cohort likely contains the adversary |
+| `SuspectNone` | Empty | Empty | Same + **must** escalate manually | Conservative deploy: zero false-suspect damage |
+| `ConfirmAllErr` | cohort → Confirmed | Empty | Alert | **Only** `-tags alice_ia_debug`; production `SetAmbiguousMaskPolicy` **force-remaps → SuspectAllErr** |
+
+- Alice: `crypto/tss/blame` · `AmbiguousMaskPolicy`, default **`SuspectAllErr`**;
+- Production builds: `ConfirmAllErr` **unavailable** (`policy_prod.go`); debug builds: `-tags alice_ia_debug`;
+- **Forbidden** default `ConfirmAllErr` — conflicts with §1 “not uniquely provable attribution.”
+
+**Acceptance**:
+
+- Unit test: `TestGetBlameResultSplitsDisjoint` (Confirmed ∩ Suspect = ∅);
+- Unit test: `TestAmbiguousMaskPolicyCohortExcludesConfirmed` (cohort = Err − Confirmed);
+- Unit test: `TestAmbiguousMaskPolicyConfirmAllErrRemappedInProd`;
+- Benchmark still keeps `MatchDecModQMaskEnum8` (worst-case 256; impl finds first then finishes scan; ≥2 early-returns Ambiguous).
 
 ---
 
-### IA-05 · gate store 缺失 blame 方向
+### IA-02 · R1-FS Challenge non-prime (Accepted Risk)
 
-**现状**（`crypto/tss/pairwise/gate.go`）：
+**Reading order** (quantified detail in [R1-FS_risk_memo.md](./R1-FS_risk_memo.md)):
 
 ```text
-Store.Get(round, sender, self) 失败 → Blame(sender) → ErrDigestBarrier
+Runtime safety     → memo §2.1 (deterministically 0)
+Generic upper bound → memo §2.2 (O(2^-1024))
+What is accepted   → memo §2.3 (A/B/C)
+Worst-case outcome → memo §2.4 (branches 1/2)
+Forgery hardness   → memo §2.5 (DCR constraints)
+sign-off           → memo §2.4.3 (citable directly)
 ```
 
-此处 `sender` = **reveal 消息发送方**。
+**Current state** (`crypto/zkproof/paillier` · `GetE`):
 
-**设计假设**：
+- Code matches **upstream**: Fiat–Shamir challenge \(e \in [-q/2,q/2]\) is an **integer**, **not prime**;
+- memo §2.1: when \(e\neq e'\), \(\gcd(e-e',N)=1\) holds **deterministically** (not w.h.p.); **no runtime impact**;
+- **Sole weakness (proof layer)**: proof template not stated in standard FS form → standard-model soundness has **no closed argument**; runtime unaffected; **no known attack**;
+- **GetE not changed** — affects **entire alice library** Paillier ZK, not IA alone.
 
-- MsgMain 顺序保证：**Digest 屏障完成后**才进入 Round reveal handler；
-- store 缺 entry ⇒ 更常解释为 **reveal 抢跑 / 本地状态不一致**，而非「digest 在网络上丢了但 reveal 合法」。
+**Accepted Risk record (needs sign-off)** — quantified memo: [R1-FS_risk_memo.md](./R1-FS_risk_memo.md) (§0 accurate status table)
 
-**剩余风险**：
+| Item | Content |
+|------|---------|
+| **Impact** | DecModQ / Mul / Aff and other FS proofs; **proof template** uses non-prime integer challenge (same as upstream) |
+| **Runtime \(\gcd(e-e',N)\neq 1\)** | Under Alice default params, when \(e\neq e'\) **probability = 0** (\(|e-e'|\le q\ll \min(p,p')\)); \(e=e'\) is FS binding, not a random gcd event |
+| **Generic random upper bound (template)** | Without \(\|e\|\le q/2\) constraint, \(\Pr[\gcd\neq 1]=O(2^{-1024})\) (2048-bit \(N=p\cdot p'\) union bound) |
+| **What is actually accepted** | **Proof-template wording gap (A)** — worst-case outcomes in memo **§2.4**; **≠** runtime weakening; gcd (B) is negligible |
+| **Precise meaning of “weak”** | Only: **no closed soundness argument** in the standard model (proof layer); code behavior matches upstream; docs tighter than old comments |
+| **Forging DecModQ proof hardness** | See memo **§2.5** (branch 1: gcd path impossible; branch 2: no closed argument / no known construction; lower bound under DCR) |
+| **Primary cause of IA attribution imprecision** | **Not** R1-FS; see **IA-01 / IA-03** and memo **§2.5.3** |
+| **Why not blocking sign release** | Matches upstream alice; changing GetE is a library-wide breaking change |
+| **Closure path** | PR-D4a memo ✅ · PR-D4b prime challenge PoC (separate branch) |
 
-- 若实现 bug 或乱序导致 digest 未入库却收到 reveal，会 **blame reveal 方**；
-- 若 digest 发送方未发、reveal 方也未发，应在 **Digest 超时（IA-04）** blame digest 缺失方。
+**Plan**:
 
-**方案**：
-
-| 优先级 | 动作 |
-|--------|------|
-| P0 | 文档写清 **gate blame 方向性假设**（见上） |
-| **P1** | **gate 失败诊断分支**（工程正确性，优先于 reveal 单边 blame）： |
-| | 1. `Store.Get` 失败时，查本地是否 **曾收到** 该 `sender` 的 digest（内存 store / 日志 / `DigestBarrier` 收包记录）； |
-| | 2. **若曾收到** → 归为 **本地处理路径故障**：**不 blame 任何远端**；`Confirmed`/`Suspect` 均为空；触发 `LocalDigestProcessingFault` 运维告警； |
-| | 3. **若未收到** → 维持现有逻辑：**Suspect** blame reveal 方（或结合 IA-04 超时 blame digest 缺失方）； |
-| P1 | `OnDigestTimeout` 与 gate 失败 **合并 blame 上下文**（日志带 round / 是否曾收到 digest / 诊断分支结果） |
-| P2 | 持久化 digest 收包审计 trail（跨进程 replay 诊断） |
-
----
-
-### IA-06 · Err2 缺席归责
-
-**现状**（`sign/err_helpers.go` · `blameAbsentSenders`）：
-
-- 未广播 Err2 的 peer 进入 blamed 集合；
-- **2 方场景**：攻击者本地验签可通过 → **不发 Err2**；victim 靠 **缺席 + 离线 `ProcessErr2Msg`**；
-- **缺席** 可能来自：作恶、网络、实现选择。
-
-**方案**：
-
-| 优先级 | 动作 |
-|--------|------|
-| P0 | 文档：缺席 blame = **运维 hint**；精确归责依赖 **ProcessErr2 收到有效 Err2 + ZK** |
-| **P1** | `blameAbsentSenders` 产出写入 **Suspect**，**不得**进入 Confirmed（与 IA-04 同级） |
-| P1 | 3 方+ 诚实 mesh 测试补全（已有部分 coverage） |
-| P2 | Err2 收集超时与 `ErrAbortTimeout` 文档化（CGGMP Err 收集阶段） |
+| Priority | Action |
+|----------|--------|
+| P0 | [R1-FS_risk_memo.md](./R1-FS_risk_memo.md) + CGGMP.md §5.4 mark **Accepted risk** |
+| P1 | External crypto review sign-off on memo **§2.4.3** |
+| P2 | PR-D4b: `GetE` prime challenge PoC (does not block mainline) |
 
 ---
 
-### §4.7 · Blame API：Confirmed vs Suspect（IA-04 / IA-06 / §1 闭合）
+### IA-03 · Err1 precise attribution capability
 
-**现状**：`GetBlameResult()` / `GetConfirmedPeers()` / `GetSuspectPeers()` 已落地（CGGMP sign + FROST）；`GetBlamedPeers()` = Confirmed ∪ Suspect（兼容，**penalty 请用 Confirmed**）。
+**Current state** (`sign/err_process.go` · `ProcessErr1Msg`):
 
-**类型**（`crypto/tss/blame`）：
+1. **DecModQ path**: verifies Err1 broadcaster **self-consistency** (local ciphertext ↔ broadcast \(x\)) — **self-proof / self-exposure**, does **not** directly name the upstream MtA adversary;
+2. **Mul/Aff ZK failure**: should already blame in **Round1/2** (happy path);
+3. **Global \(\sum\delta \neq \Delta\)**: after all DecModQ pass, **all remote Err1 senders** enter `errPeers` — **coarse over-blame**.
+
+**Distinction from M-01**:
+
+| Item | M-01 | IA-03 |
+|------|------|-------|
+| Problem | Malformed Delta → panic DoS | Who is responsible for δ inconsistency |
+| Fix | Parse error | **Not** narrowed to a single peer |
+| Status | **Fixed** | **Partial** |
+
+**Plan**:
+
+| Priority | Action |
+|----------|--------|
+| P0 | List IA-03 separately in the issue table; forbid reading M-01 ✅ as IA completeness |
+| P1 | Docs + `GetBlamedPeers` comments: Err1 global Δ failure = **suspect set**, not courtroom evidence |
+| P2 | Research whether paper Err1 can name MtA adversary when all DecModQ pass (may need extra ZK) |
+
+---
+
+### IA-04 · Digest timeout blame
+
+**Current state**:
+
+- `MsgMain.SetAbortTimeout` (default **2 minutes**) applies to `DigestBarrierHandler`;
+- Timeout → `OnDigestTimeout` → blame peers that **did not send digest in that round**;
+- **Cannot distinguish** malicious silence vs slow network / partition.
+
+**Relation to broker layer**:
+
+- Broker **JWT WS disconnect** → `abortMpcTask` (**second-scale**), usually **before** the 2-minute timeout;
+- The 2-minute window mainly covers **“still appears online but never sends digest”** or **tests/partitions without broker abort**.
+
+**Plan**:
+
+| Priority | Action |
+|----------|--------|
+| P0 | Integration docs: digest timeout blame = **best-effort**; **must not** be the sole basis for economic penalties |
+| P1 | `SetAbortTimeout` configurable; production suggestion **30s–120s** tuned by RTT |
+| P1 | Optional broker: **sign-phase protocol idle timeout** (WS up but no mpc wire for a long time) |
+| P1 | Timeout blame written to **Suspect** (not Confirmed); see §4.7 API |
+| P2 | Broker `BlamedNodes[]` carries suspect/confirmed tags (INT-04) |
+
+---
+
+### IA-05 · Gate store miss blame direction
+
+**Current state** (`crypto/tss/pairwise/gate.go`):
+
+```text
+Store.Get(round, sender, self) fails → Blame(sender) → ErrDigestBarrier
+```
+
+Here `sender` = **reveal message sender**.
+
+**Design assumption**:
+
+- MsgMain ordering guarantees: Round reveal handlers run **only after Digest barrier completes**;
+- Missing store entry is more often explained as **reveal racing ahead / local state inconsistency**, not “digest lost on the wire but reveal is legitimate.”
+
+**Residual risk**:
+
+- If an implementation bug or reordering delivers reveal before digest is stored, we **blame the reveal side**;
+- If the digest sender never sent and the reveal side also never sent, **Digest timeout (IA-04)** should blame the missing digest side.
+
+**Plan**:
+
+| Priority | Action |
+|----------|--------|
+| P0 | Document **gate blame directionality assumptions** (above; also [PAIRWISE_ECHO.md §0.1](./PAIRWISE_ECHO.md)) |
+| **P1** | **Gate failure diagnostic branch** (engineering correctness, preferred over unilateral reveal blame): |
+| | 1. On `Store.Get` failure, check whether local side **ever received** that `sender`’s digest (in-memory store / logs / `DigestBarrier` receive records); |
+| | 2. **If received** → classify as **local processing-path fault**: **blame no remote**; both `Confirmed`/`Suspect` empty; raise `LocalDigestProcessingFault` ops alert; |
+| | 3. **If not received** → keep current logic: **Suspect** blame reveal side (or combine with IA-04 timeout blame of missing digest side); |
+| P1 | Merge `OnDigestTimeout` and gate-failure **blame context** (logs include round / whether digest was ever received / diagnostic branch result) |
+| P2 | Persist digest receive audit trail (cross-process replay diagnosis) |
+
+---
+
+### IA-06 · Err2 absence attribution
+
+**Current state** (`sign/err_helpers.go` · `blameAbsentSenders`):
+
+- Peers that did not broadcast Err2 enter the blamed set;
+- **2-party scenario**: attacker’s local verify may succeed → **no Err2 sent**; victim relies on **absence + offline `ProcessErr2Msg`**;
+- **Absence** may come from: malice, network, or implementation choice.
+
+**Plan**:
+
+| Priority | Action |
+|----------|--------|
+| P0 | Docs: absence blame = **ops hint**; precise attribution depends on **ProcessErr2 receiving a valid Err2 + ZK** |
+| **P1** | `blameAbsentSenders` output goes to **Suspect**, **must not** enter Confirmed (same tier as IA-04) |
+| P1 | Complete 3-party+ honest mesh tests (partial coverage already exists) |
+| P2 | Document Err2 collection timeout vs `ErrAbortTimeout` (CGGMP Err collection phase) |
+
+---
+
+### §4.7 · Blame API: Confirmed vs Suspect (closes IA-04 / IA-06 / §1)
+
+**Current state**: `GetBlameResult()` / `GetConfirmedPeers()` / `GetSuspectPeers()` landed (CGGMP sign + FROST); `GetBlamedPeers()` = Confirmed ∪ Suspect (compatibility; **use Confirmed for penalties**).
+
+**Types** (`crypto/tss/blame`):
 
 ```go
 type Result struct {
@@ -277,124 +289,131 @@ type Result struct {
 }
 ```
 
-**onBlame 调用点清单（CGGMP sign）**：
+**onBlame call-site inventory (CGGMP sign)**:
 
-| Kind | 调用点 |
-|------|--------|
-| **Confirmed** | `blameSender`（R1–R3 ZK/gate/table）；`blamePeer`（δ/σ）；`NewSign` echo `SetOnConflict`；`err1/err2 Finalize` ← ProcessErr Confirmed |
-| **Suspect** | `blameMissingDigestSenders` / `OnDigestTimeout` R1–R3；ProcessErr Suspect（缺席、全局 Δ、ambiguous cohort） |
+| Kind | Call sites |
+|------|------------|
+| **Confirmed** | `blameSender` (R1–R3 ZK/gate/table); `blamePeer` (δ/σ); `NewSign` echo `SetOnConflict`; `err1/err2 Finalize` ← ProcessErr Confirmed |
+| **Suspect** | `blameMissingDigestSenders` / `OnDigestTimeout` R1–R3; ProcessErr Suspect (absence, global Δ, ambiguous cohort) |
 
-**分类规则（摘要）**：
+**Classification rules (summary)**:
 
-| 来源 | 集合 |
-|------|------|
-| DecModQ / Mul / Aff ZK 失败、mask 0 解 sender | **Confirmed** |
-| mask 多解 + `SuspectAllErr`（默认） | **Suspect** = 本轮 Err 发送者 − Confirmed |
-| 全局 \(\sum\delta\neq\Delta\) | **Suspect**（Err 发送者） |
-| Digest 超时（IA-04） | **Suspect** |
-| gate 失败（PR-D3 诊断前） | **Confirmed**（reveal 方；诊断留 PR-D3） |
-| Err2 缺席（IA-06） | **Suspect** |
-| ProcessErr2 有效 Err2 + ZK 指认 | **Confirmed** |
+| Source | Set |
+|--------|-----|
+| DecModQ / Mul / Aff ZK failure, mask 0-solution sender | **Confirmed** |
+| Multi-solution mask + `SuspectAllErr` (default) | **Suspect** = this round’s Err senders − Confirmed |
+| Global \(\sum\delta\neq\Delta\) | **Suspect** (Err senders) |
+| Digest timeout (IA-04) | **Suspect** |
+| Gate failure (pre PR-D3 diagnostics) | **Confirmed** (reveal side; diagnostics remain PR-D3) |
+| Err2 absence (IA-06) | **Suspect** |
+| ProcessErr2 valid Err2 + ZK attribution | **Confirmed** |
 
-**方案**：
+**Plan**:
 
-| 优先级 | 动作 |
-|--------|------|
-| P1 | Alice：`BlameResult` + 分类 — **已落地（PR-D1）** |
-| P1 | `mpc.FormatSignErr` / INT-03 输出区分 confirmed vs suspect |
-| P2 | INT-04：`BlamedNodes[]` 带 `kind: confirmed|suspect` |
-
----
-
-### IA-07 / IA-08 · 文档一致性
-
-**方案**：
-
-| 优先级 | 动作 |
-|--------|------|
-| P0 | 发布本文；[CGGMP.md](./CGGMP.md) §2 改为 **指向本文 §3** 作权威状态表 |
-| P0 | 废弃单 ✅ 表示 IA 完备；F-01 改为 **部分** |
-| P1 | §6 R1 Checklist 扩展（见下） |
+| Priority | Action |
+|----------|--------|
+| P1 | Alice: `BlameResult` + classification — **landed (PR-D1)** |
+| P1 | `mpc.FormatSignErr` / INT-03 output distinguishes confirmed vs suspect |
+| P2 | INT-04: `BlamedNodes[]` with `kind: confirmed|suspect` |
 
 ---
 
-## 5. 集成层 remediation（broker / node）
+### IA-07 / IA-08 · Documentation consistency
 
-与 Alice 协议内 IA **互补**，不改变密码学 blame 边界：
+**Plan**:
 
-| ID | 项 | 现状 | 建议 |
-|----|-----|------|------|
-| INT-01 | Node 掉线 fast-fail | broker `abortMpcTasksForNode` + `mpcTaskAbort` | **已修**；优先于 Alice 2m |
-| INT-02 | FROST blame 进 error 文本 | `mpc.FormatSignErr` | **已修**（alg_ed25519） |
-| INT-03 | CGGMP blame 进 error 文本 | 未接 | **待修**：`alg_ecdsa/sign.go` 同 FROST |
-| INT-04 | blame 上报 broker | 未做 | **P2**：`CliMPCSignResultReq` 增 `BlamedNodes[]` |
-| INT-05 | digest 超时 vs broker 超时 | 文档分散 | **P0**：运维手册写 **预期 fail 时间线** |
+| Priority | Action |
+|----------|--------|
+| P0 | Publish this doc; change [CGGMP.md](./CGGMP.md) §2 to **point here §3** as the authoritative status table |
+| P0 | Retire bare ✅ as “IA complete”; change F-01 to **Partial** |
+| P1 | Extend §6 R1 Checklist (below) |
 
-**预期 fail 时间线（sign，participant 掉线）**：
+---
+
+## 5. Integration-layer remediation (broker / node)
+
+Complementary to in-protocol Alice IA; does **not** change cryptographic blame boundaries:
+
+| ID | Item | Current | Recommendation |
+|----|------|---------|----------------|
+| INT-01 | Node disconnect fast-fail | broker `abortMpcTasksForNode` + `mpcTaskAbort` | **Fixed**; preferred over Alice 2m |
+| INT-02 | FROST blame in error text | `mpc.FormatSignErr` | **Fixed** (alg_ed25519) |
+| INT-03 | CGGMP blame in error text | Not wired | **Open**: `alg_ecdsa/sign.go` same as FROST |
+| INT-04 | Blame report to broker | Not done | **P2**: add `BlamedNodes[]` to `CliMPCSignResultReq` |
+| INT-05 | Digest timeout vs broker timeout | Docs scattered | **P0**: ops runbook documents **expected fail timeline** |
+
+**Expected fail timeline (sign, participant disconnect)**:
 
 ```text
 T+0s     broker WS onClose
-T+0~1s   abortMpcTask → 在线 node mpcTaskAbort → abortCancel → RunSign 退出
-         （通常远早于 Alice Digest 2m）
-T+2m     仅当上层 abort 未生效时，Alice ErrDigestTimeout
-T+6/12m  node signTimeout / session 兜底
+T+0~1s   abortMpcTask → online node mpcTaskAbort → abortCancel → RunSign exits
+         (usually far earlier than Alice Digest 2m)
+T+2m     Alice ErrDigestTimeout only if upper-layer abort did not take effect
+T+6/12m  node signTimeout / session fallback
 ```
 
 ---
 
-## 6. R1 / DecModQ Checklist（扩展）
+## 6. R1 / DecModQ Checklist (extended)
 
-相对 [CGGMP.md](./CGGMP.md) §5.4，明确 **已修 / 部分 / 接受风险 / 待评估**：
+Relative to [CGGMP.md](./CGGMP.md) §5.4, explicitly mark **Fixed / Partial / Accepted risk / To evaluate**:
 
-| 项 | 状态 | 备注 |
-|----|------|------|
-| KS（含 \(w\) 无界） | **接受风险** | ZK **Weak**；不破坏 KS |
-| Lift A2（\(k\in[-2,7]\)） | **已修** | 与 `MaxIARemotePeers=8` 联动 |
-| \(\|Y\|<8N\) + \(\|z_1\|\) 上界 / Modulo Gap | **已修** | **有效判定界**；不可删 Verify 检查（CGGMP.md §5.2） |
-| Err 组合（Scheme A′） | **部分** | 见 IA-01、IA-03、IA-06 |
-| Blame 边界文档化 | **部分** | 本文 §4 |
-| **PublicX mask 唯一性** | **待修** | IA-01 方案 B/C |
-| **R1-FS Challenge 素数** | **接受风险** | IA-02；[R1-FS_risk_memo.md](./R1-FS_risk_memo.md) · PR-D4a |
-| **\(Y^*\) 等价类 / Extractor** | **待评估** | 不阻塞当前 IA 工程；审计追问时引用 §5.2 |
-| **w 无界 → Weak ZK** | **接受风险** | 与 upstream 一致 |
+| Item | Status | Notes |
+|------|--------|-------|
+| KS (incl. unbounded \(w\)) | **Accepted risk** | ZK **Weak**; does not break KS |
+| Lift A2 (\(k\in[-2,7]\)) | **Fixed** | Coupled with `MaxIARemotePeers=8` |
+| \(\|Y\|<8N\) + \(\|z_1\|\) bound / Modulo Gap | **Fixed** | **Effective decision bound**; do not remove Verify checks (CGGMP.md §5.2) |
+| Err composition (Scheme A′) | **Partial** | See IA-01, IA-03, IA-06 |
+| Blame boundary documentation | **Partial** | This doc §4 |
+| **PublicX mask uniqueness** | **Open** | IA-01 options B/C |
+| **R1-FS Challenge prime** | **Accepted risk** | IA-02; [R1-FS_risk_memo.md](./R1-FS_risk_memo.md) · PR-D4a |
+| **\(Y^*\) equivalence class / Extractor** | **To evaluate** | Does not block current IA engineering; cite §5.2 when auditors ask |
+| **Unbounded \(w\) → Weak ZK** | **Accepted risk** | Matches upstream |
 
 ---
 
-## 7. 实施优先级（建议 PR 切分）
+## 7. Implementation priority (suggested PR split)
 
 ```text
-PR-D0   本文 + CGGMP.md §2 交叉引用 + README 索引（无代码）
-PR-D1   matchDecModQ 多解检测（IA-01 方案 B）✅
-        + AmbiguousMaskPolicy 默认 SuspectAllErr（cohort=Err−Confirmed）
-        + ConfirmAllErr 生产 remap；alice_ia_debug 才放行
-        + BlameResult Confirmed/Suspect API（§4.7）；Confirmed ∩ Suspect = ∅
-        + 枚举：先找第一个再扫完（≥2 → MaskAmbiguous）
-PR-D2   alg_ecdsa FormatSignErr（INT-03）+ blame kind 输出
-PR-D3   SetAbortTimeout 可配置 + gate 诊断分支 P1（IA-05）+ 集成文档（IA-04）
-PR-D4a  R1-FS_risk_memo.md — 量化上界 + 影响范围 + upstream diff（纯文档，可立即合）
-PR-D4b  GetE prime challenge PoC（独立分支，不阻塞主线）
-PR-D5   signSix / refresh Pairwise（PE-03/04，独立大项）
+PR-D0   This doc + CGGMP.md §2 cross-refs + README index (no code)
+PR-D1   matchDecModQ multi-solution detection (IA-01 option B) ✅
+        + AmbiguousMaskPolicy default SuspectAllErr (cohort=Err−Confirmed)
+        + ConfirmAllErr production remap; alice_ia_debug only to allow
+        + BlameResult Confirmed/Suspect API (§4.7); Confirmed ∩ Suspect = ∅
+        + Enum: find first then finish scan (≥2 → MaskAmbiguous)
+PR-D2   alg_ecdsa FormatSignErr (INT-03) + blame kind output
+PR-D3   SetAbortTimeout configurable + gate diagnostic branch P1 (IA-05) + integration docs (IA-04)
+PR-D4a  R1-FS_risk_memo.md — quantified bounds + impact scope + upstream diff (docs only; merge anytime)
+PR-D4b  GetE prime challenge PoC (separate branch; does not block mainline)
+PR-D5   signSix / refresh Pairwise (PE-03/04; independent large item)
 ```
 
 ---
 
-## 8. 测试补充清单
+## 8. Additional test checklist
 
-| 测试 | 覆盖 | 优先级 |
-|------|------|--------|
-| `TestMatchDecModQAmbiguousMask` | IA-01 多解 | P1 |
-| `TestProcessErr1GlobalDeltaOverBlame` | IA-03 文档化行为 | P0（已有逻辑，补断言文档） |
-| `TestDigestTimeoutDoesNotBlameIfAborted` | INT-01 与 IA-04 | P1 |
-| `TestProcessErr2AbsentSender` | IA-06 边界 | P1 |
+> **Echo three-step closed loop**: honest path + mesh abort E2E already covered (see [PAIRWISE_ECHO.md §0.1](./PAIRWISE_ECHO.md)). The table below is **edge / IA precision** follow-up tests; do not confuse with “Echo not implemented.”
+
+| Test | Coverage | Priority |
+|------|----------|----------|
+| `TestMatchDecModQAmbiguousMask` | IA-01 multi-solution | P1 |
+| `TestProcessErr1GlobalDeltaOverBlame` | IA-03 documented behavior | P0 (logic exists; add assertion docs) |
+| `TestDigestTimeoutDoesNotBlameIfAborted` | INT-01 vs IA-04 | P1 |
+| `TestProcessErr2AbsentSender` | IA-06 boundary | P1 |
 | 3-party Err2 mesh honest | IA-06 | P2 |
+| Gate local diagnostic branch (received digest / not) | IA-05 · PR-D3 | P1 |
+| `TestGetBlameResultSplitsDisjoint` | Confirmed ∩ Suspect = ∅; `blameAbsentSenders` mutually exclusive with Confirmed | P1 |
 
 ---
 
-## 修订
+## Revisions
 
-| 日期 | 说明 |
-|------|------|
-| 2026-09-13 | 初版：四档状态、IA-01~08、集成层 INT-01~05、R1 Checklist 扩展、PR 切分 |
-| 2026-09-13 | 审计收口：IA-02 量化 memo、IA-01 默认策略、IA-05 P1 诊断、§4.7 Blame API、PR-D4a/b |
-| 2026-09-13 | \|Y\|<8N/\|z1\| 标有效判定界；R1-FS「弱」收窄为模板表述缺口 |
-| 2026-09-13 | PR-D1 落地：blame 包、MaskMatchResult、BlameResult、SuspectAllErr cohort、生产 ConfirmAllErr remap |
+| Date | Notes |
+|------|-------|
+| 2026-09-13 | Initial: four-tier status, IA-01~08, integration INT-01~05, R1 Checklist extension, PR split |
+| 2026-09-13 | Audit close-out: IA-02 quantified memo, IA-01 default policy, IA-05 P1 diagnostics, §4.7 Blame API, PR-D4a/b |
+| 2026-09-13 | \|Y\|<8N/\|z1\| marked as effective decision bound; R1-FS “weak” narrowed to template wording gap |
+| 2026-09-13 | PR-D1 landed: blame package, MaskMatchResult, BlameResult, SuspectAllErr cohort, production ConfirmAllErr remap |
+| 2026-09-14 | IA-02 wording close-out: reading order; forgery hardness / primary attribution cause as separate rows; aligned with R1-FS memo |
+| 2026-09-14 | §8 + IA-05: Echo closed-loop coverage wording; add gate diagnostic / BlameResult disjointness tests |
+| 2026-09-14 | English edition |

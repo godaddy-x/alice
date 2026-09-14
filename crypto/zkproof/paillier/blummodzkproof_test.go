@@ -85,6 +85,48 @@ var _ = Describe("Blummodzkproof test", func() {
 			err := tamperedProof.Verify(ssIDInfo, n1)
 			Expect(err).Should(Equal(ErrInvalidInput))
 		})
+
+		It("should fail if x_i is 0 (not in Z_N^*)", func() {
+			xCopy := append([][]byte(nil), zkproof.X...)
+			xCopy[0] = big0.Bytes()
+			tampered := &PaillierBlumMessage{
+				A: zkproof.A,
+				B: zkproof.B,
+				W: zkproof.W,
+				X: xCopy,
+				Z: zkproof.Z,
+			}
+			err := tampered.Verify(ssIDInfo, n1)
+			Expect(err).ShouldNot(BeNil())
+		})
+
+		It("should fail if x_i shares a factor with N", func() {
+			xCopy := append([][]byte(nil), zkproof.X...)
+			xCopy[0] = p1.Bytes()
+			tampered := &PaillierBlumMessage{
+				A: zkproof.A,
+				B: zkproof.B,
+				W: zkproof.W,
+				X: xCopy,
+				Z: zkproof.Z,
+			}
+			err := tampered.Verify(ssIDInfo, n1)
+			Expect(err).Should(Equal(ErrInvalidInput))
+		})
+
+		It("should fail if x_i >= N", func() {
+			xCopy := append([][]byte(nil), zkproof.X...)
+			xCopy[0] = new(big.Int).Add(n1, big1).Bytes()
+			tampered := &PaillierBlumMessage{
+				A: zkproof.A,
+				B: zkproof.B,
+				W: zkproof.W,
+				X: xCopy,
+				Z: zkproof.Z,
+			}
+			err := tampered.Verify(ssIDInfo, n1)
+			Expect(err).ShouldNot(BeNil())
+		})
 	})
 
 })
