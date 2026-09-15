@@ -19,8 +19,8 @@ No Paillier/MtA-class single-point key recovery. Round2 has `zi·G` algebraic ch
 | ID | Sev | Issue | Status |
 |----|-----|-------|--------|
 | **FR-01** | Med | Sign Echo / equivocation | **Fixed** → [PAIRWISE_ECHO.md](./PAIRWISE_ECHO.md) §B |
-| **FR-02** | Med | `NewSigner` does not validate DKG outputs | **Open** P1: `ValidatePublicKey` + `share·G==Y` |
-| **FR-03** | Med | Final Ed25519 verify | **Confirm/open** P1: Finalize or app-layer verify |
+| **FR-02** | Med | `NewSigner` does not validate DKG outputs | **Fixed**: `validateFrostDKGResult` (members / curve / `ValidatePublicKey` / `share·G==Y`) |
+| **FR-03** | Med | Final Ed25519 verify | **Fixed**: `round2.Finalize` → `verifySignature` (`edwards.Verify`) |
 | **FR-04** | Low | README mentions Reshare; code has none | **Open** P2 |
 | **FR-05** | Low | Round1 D/E curve / identity checks | **Open** P3 |
 | **FR-06** | Low | No paper-level identifiable abort | **Partial**: digest/algebra blame; no CGGMP Err packets |
@@ -31,8 +31,8 @@ No Paillier/MtA-class single-point key recovery. Round2 has `zi·G` algebraic ch
 
 ## 3. Integration notes
 
-1. Sign only with local DKG share / Bks / Ys / pubKey  
-2. App layer should Ed25519-verify the final signature (mitigates FR-03)  
+1. Sign only with local DKG share / Bks / Ys / pubKey (`NewSigner` re-validates; FR-02)  
+2. Final `(R,s)` is Ed25519-verified inside Sign Finalize (FR-03)  
 3. No Refresh — share rotation needs a separate plan  
 4. All parties online together; breaking wire — same fork for everyone  
 
@@ -45,4 +45,5 @@ No Paillier/MtA-class single-point key recovery. Round2 has `zi·G` algebraic ch
 | 2026-09-12 | Initial FR-01~08 (was FROST_SECURITY_REVIEW) |
 | 2026-09-13 | FR-01 → Pairwise redesign |
 | 2026-09-14 | Condensed to this file; Echo body in PAIRWISE_ECHO.md |
-| 2026-09-14 | English edition |
+| 2026-09-15 | FR-02 Fixed: NewSigner entry `validateFrostDKGResult` (+0 RTT) |
+| 2026-09-15 | FR-03 Fixed: confirmed `verifySignature` in Round2 Finalize |

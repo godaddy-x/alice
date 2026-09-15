@@ -71,7 +71,7 @@ R1Digest ‖ Round1 ──► R2Digest ‖ Round2 ──► R3Digest ‖ Round3 
 
 See [CGGMP_SIGN_7RTT_COFLIGHT_DESIGN.md](./CGGMP_SIGN_7RTT_COFLIGHT_DESIGN.md).
 
-**Wire Type**: `Round1Digest=0 … Round4=6, Err1=7, Err2=8` (all parties must be on the same fork; `SignScheduleVersion=coflight-v1`).
+**Wire Type**: `Round1Digest=0 … Round4=6, Err1=7, Err2=8` (all parties must be on the same fork; `Round1Digest.schedule_version` must equal `SignScheduleVersion=coflight-v1`).
 
 ---
 

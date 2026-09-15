@@ -60,6 +60,8 @@ message Round1DigestMsg {
     bytes gamma_ciphertext = 2;
     repeated PeerDigestEntry to_peer = 3;
     bytes table_root = 4;
+    // Sign success-path schedule dialect; must equal local SignScheduleVersion.
+    string schedule_version = 5;
 }
 
 message Round2DigestMsg {

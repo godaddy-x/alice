@@ -16,6 +16,9 @@ var (
 	ErrRevealNotComplete = errors.New("coflight: reveal not complete")
 	// ErrEchoConflict is returned when Echo equivocation was observed (INV-2).
 	ErrEchoConflict = errors.New("coflight: echo conflict")
+	// ErrScheduleMismatch is returned when Round1Digest.schedule_version differs
+	// from the local SignScheduleVersion (mixed serial/coflight peers).
+	ErrScheduleMismatch = errors.New("coflight: sign schedule version mismatch")
 )
 
 // SignScheduleVersion identifies the success-path scheduling dialect.

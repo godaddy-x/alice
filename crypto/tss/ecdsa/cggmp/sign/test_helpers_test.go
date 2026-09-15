@@ -30,6 +30,7 @@ func round1DigestEchoMsg(author string, k, gamma []byte) *Message {
 				KCiphertext:     append([]byte(nil), k...),
 				GammaCiphertext: append([]byte(nil), gamma...),
 				TableRoot:       []byte("root"),
+				ScheduleVersion: SignScheduleVersion,
 			},
 		},
 	}

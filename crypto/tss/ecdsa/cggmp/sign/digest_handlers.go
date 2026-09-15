@@ -13,6 +13,7 @@ import (
 	"github.com/getamis/alice/crypto/tss/pairwise"
 	paillierzkproof "github.com/getamis/alice/crypto/zkproof/paillier"
 	"github.com/getamis/alice/types"
+	"github.com/getamis/alice/types/message"
 	"github.com/getamis/sirius/log"
 )
 
@@ -58,6 +59,16 @@ func (p *round1Handler) digestGatekeeper() *pairwise.Gatekeeper {
 
 func (p *round1Handler) acceptDigestTable(round digestRound, sender, tag string, entries []*PeerDigestEntry, root []byte) error {
 	return p.digestGatekeeper().AcceptTable(round, tag, sender, p.expectedPeersForSender(sender), cggmpEntries(entries), root)
+}
+
+// acceptScheduleVersion enforces SignScheduleVersion on Round1Digest (+0 RTT first packet).
+func (p *round1Handler) acceptScheduleVersion(sender, got string) error {
+	// Bound length before equality: reject oversized / empty dialect strings (DoS + mix-deploy).
+	if len(got) == 0 || len(got) > 64 || got != SignScheduleVersion {
+		p.blameSender(sender)
+		return ErrScheduleMismatch
+	}
+	return nil
 }
 
 func (p *round1Handler) gateEdgeDigest(round digestRound, sender, self string, compute func() ([]byte, error)) error {
@@ -219,6 +230,9 @@ func (p *round1DigestHandler) handleDigest(logger log.Logger, msg *Message) erro
 		p.blameSender(id)
 		return ErrPairwiseDigestTable
 	}
+	if err := p.acceptScheduleVersion(id, body.GetScheduleVersion()); err != nil {
+		return err
+	}
 	if err := p.acceptDigestTable(digestR1, id, tagR1, body.GetToPeer(), body.GetTableRoot()); err != nil {
 		return err
 	}
@@ -239,7 +253,13 @@ func (p *round1DigestHandler) handleDigest(logger log.Logger, msg *Message) erro
 
 func (p *round1DigestHandler) handleReveal(logger log.Logger, msg *Message) error {
 	id := msg.GetId()
+	if _, ok := p.peers[id]; !ok {
+		return tss.ErrPeerNotFound
+	}
 	if !peerDigestHandled(p.peers, id, types.MessageType(Type_Round1Digest)) {
+		if _, exists := p.earlyRound1[id]; exists {
+			return message.ErrDupMsg
+		}
 		p.earlyRound1[id] = msg
 		return nil
 	}
@@ -251,14 +271,14 @@ func (p *round1DigestHandler) handleReveal(logger log.Logger, msg *Message) erro
 }
 
 func (p *round1DigestHandler) Finalize(logger log.Logger) (types.Handler, error) {
-	if p.coFlight.HasEchoConflict() {
-		return nil, ErrEchoConflict
-	}
-	if p.coFlightComplete() {
-		// Production CoFlight: Digests+Reveals already collected; Reveal already sent at Start.
+	// Production barrier present: NEVER fall through to serial-legacy (EQ bypass).
+	if p.coFlight != nil {
+		if err := p.coFlight.EnsureCanNext(); err != nil {
+			return nil, err
+		}
 		return p.round1Handler.Finalize(logger)
 	}
-	// N/A INV: serial-legacy / unit-test — Digests only; send Reveals then hand off.
+	// N/A INV: serial-legacy / unit-test only (nil barrier).
 	if len(p.pendingRound1) != len(p.peers) {
 		return nil, errors.New("round1 reveal not prepared before digest barrier")
 	}
@@ -311,10 +331,11 @@ func (p *round1DigestHandler) prepareRound1Digest() error {
 		Type: Type_Round1Digest,
 		Body: &Message_Round1Digest{
 			Round1Digest: &Round1DigestMsg{
-				KCiphertext:     p.kCiphertext.Bytes(),
-				GammaCiphertext: p.gammaCiphertext.Bytes(),
-				ToPeer:          entries,
-				TableRoot:       root,
+				KCiphertext:      p.kCiphertext.Bytes(),
+				GammaCiphertext:  p.gammaCiphertext.Bytes(),
+				ToPeer:           entries,
+				TableRoot:        root,
+				ScheduleVersion:  SignScheduleVersion,
 			},
 		},
 	}
@@ -423,7 +444,13 @@ func (p *round2DigestHandler) handleDigest(logger log.Logger, msg *Message) erro
 
 func (p *round2DigestHandler) handleReveal(logger log.Logger, msg *Message) error {
 	id := msg.GetId()
+	if _, ok := p.peers[id]; !ok {
+		return tss.ErrPeerNotFound
+	}
 	if !peerDigestHandled(p.peers, id, types.MessageType(Type_Round2Digest)) {
+		if _, exists := p.earlyRound2[id]; exists {
+			return message.ErrDupMsg
+		}
 		p.earlyRound2[id] = msg
 		return nil
 	}
@@ -444,13 +471,13 @@ func (p *round2DigestHandler) broadcastPendingReveals() {
 }
 
 func (p *round2DigestHandler) Finalize(logger log.Logger) (types.Handler, error) {
-	if p.coFlight.HasEchoConflict() {
-		return nil, ErrEchoConflict
-	}
-	if p.coFlightComplete() {
+	if p.coFlight != nil {
+		if err := p.coFlight.EnsureCanNext(); err != nil {
+			return nil, err
+		}
 		return p.reveal.Finalize(logger)
 	}
-	// N/A INV: serial-legacy
+	// N/A INV: serial-legacy / unit-test only (nil barrier).
 	for id, peer := range p.peers {
 		if peer.round1Data == nil || peer.round1Data.round2Msg == nil {
 			return nil, errors.New("missing pending round2 message")
@@ -554,7 +581,13 @@ func (p *round3DigestHandler) handleDigest(logger log.Logger, msg *Message) erro
 
 func (p *round3DigestHandler) handleReveal(logger log.Logger, msg *Message) error {
 	id := msg.GetId()
+	if _, ok := p.peers[id]; !ok {
+		return tss.ErrPeerNotFound
+	}
 	if !peerDigestHandled(p.peers, id, types.MessageType(Type_Round3Digest)) {
+		if _, exists := p.earlyRound3[id]; exists {
+			return message.ErrDupMsg
+		}
 		p.earlyRound3[id] = msg
 		return nil
 	}
@@ -572,13 +605,13 @@ func (p *round3DigestHandler) broadcastPendingReveals() {
 }
 
 func (p *round3DigestHandler) Finalize(logger log.Logger) (types.Handler, error) {
-	if p.coFlight.HasEchoConflict() {
-		return nil, ErrEchoConflict
-	}
-	if p.coFlightComplete() {
+	if p.coFlight != nil {
+		if err := p.coFlight.EnsureCanNext(); err != nil {
+			return nil, err
+		}
 		return p.reveal.Finalize(logger)
 	}
-	// N/A INV: serial-legacy
+	// N/A INV: serial-legacy / unit-test only (nil barrier).
 	for id, m := range p.pendingRound3 {
 		p.peerManager.MustSend(id, m)
 	}

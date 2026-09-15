@@ -45,6 +45,11 @@ type Signer struct {
 }
 
 func NewSigner(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, threshold uint32, share *big.Int, dkgResult *dkg.Result, msg []byte, listener types.StateChangedListener) (*Signer, error) {
+	// FR-02: local DKG/material gate before any Sign networking (+0 RTT).
+	// Must run before peerManager.NumPeers() so nil PeerManager fails cleanly.
+	if err := validateFrostDKGResult(pubKey, peerManager, threshold, share, dkgResult); err != nil {
+		return nil, err
+	}
 	numPeers := peerManager.NumPeers()
 	if err := validateParticipantCount(int(numPeers) + 1); err != nil {
 		return nil, err

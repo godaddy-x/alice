@@ -102,6 +102,10 @@ type round1 struct {
 }
 
 func newRound1(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, threshold uint32, share *big.Int, dkgResult *dkg.Result, message []byte, ssid []byte) (*round1, error) {
+	// Defense in depth: same FR-02 gate as NewSigner (safe if called directly from tests).
+	if err := validateFrostDKGResult(pubKey, peerManager, threshold, share, dkgResult); err != nil {
+		return nil, err
+	}
 	bks := dkgResult.Bks
 	ys := dkgResult.Ys
 	selfId := peerManager.SelfID()
@@ -109,24 +113,12 @@ func newRound1(pubKey *ecpointgrouplaw.ECPoint, peerManager types.PeerManager, t
 	curve := pubKey.GetCurve()
 	curveN := curve.Params().N
 	bbks := make(birkhoffinterpolation.BkParameters, 0, len(bks))
-	sgs := make([]*ecpointgrouplaw.ECPoint, 0, len(bks))
 	nodes := make(map[string]*peer, peerManager.NumPeers()+1)
 	i := 0
 	for id, bk := range bks {
 		bbks = append(bbks, bk)
-		sgs = append(sgs, ys[id])
 		nodes[id] = newPeer(id, i, bk, ys[id])
 		i++
-	}
-	if err := bbks.CheckValid(threshold, curveN); err != nil {
-		return nil, err
-	}
-	if err := bbks.ValidatePublicKey(sgs, threshold, pubKey); err != nil {
-		return nil, err
-	}
-	shareG := ecpointgrouplaw.ScalarBaseMult(curve, share)
-	if !shareG.Equal(ys[selfId]) {
-		return nil, errors.New("share does not match partial public key")
 	}
 	coBks, err := bbks.ComputeBkCoefficient(threshold, curveN)
 	if err != nil {

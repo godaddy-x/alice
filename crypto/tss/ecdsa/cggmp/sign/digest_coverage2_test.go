@@ -86,6 +86,7 @@ func TestRound1DigestHandleMessageInvalidTableBlames(t *testing.T) {
 				GammaCiphertext: []byte("g"),
 				ToPeer:          []*PeerDigestEntry{},
 				TableRoot:       make([]byte, 32),
+				ScheduleVersion: SignScheduleVersion,
 			},
 		},
 	})
@@ -128,6 +129,7 @@ func TestRound1DigestHandleMessageSuccess(t *testing.T) {
 				GammaCiphertext: []byte("g"),
 				ToPeer:          entries,
 				TableRoot:       root,
+				ScheduleVersion: SignScheduleVersion,
 			},
 		},
 	})
@@ -175,6 +177,9 @@ func TestPrepareRound1DigestAndFinalizeSuccess(t *testing.T) {
 	}
 	if h.digestMsg == nil || len(h.pendingRound1) != 1 {
 		t.Fatal("expected pending Round1 and digestMsg")
+	}
+	if got := h.digestMsg.GetRound1Digest().GetScheduleVersion(); got != SignScheduleVersion {
+		t.Fatalf("schedule_version=%q, want %q", got, SignScheduleVersion)
 	}
 	next, err := h.Finalize(log.New())
 	if err != nil {

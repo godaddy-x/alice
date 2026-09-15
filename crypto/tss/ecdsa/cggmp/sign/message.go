@@ -51,6 +51,7 @@ func (m *Message) GetEchoMessage() types.Message {
 				GammaCiphertext: cloneBytes(src.GetGammaCiphertext()),
 				ToPeer:          clonePeerDigests(src.GetToPeer()),
 				TableRoot:       cloneBytes(src.GetTableRoot()),
+				ScheduleVersion: src.GetScheduleVersion(),
 			},
 		}
 		return mm

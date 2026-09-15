@@ -50,12 +50,14 @@ var _ = Describe("Echo message", func() {
 					GammaCiphertext: []byte("g"),
 					ToPeer:          []*PeerDigestEntry{{PeerId: "peer-2", Digest: make([]byte, 32)}},
 					TableRoot:       make([]byte, 32),
+					ScheduleVersion: SignScheduleVersion,
 				},
 			},
 		}
 		echo := m.GetEchoMessage()
 		Expect(echo).NotTo(BeNil())
 		Expect(echo.(*Message).GetRound1Digest().GetKCiphertext()).To(Equal([]byte("k")))
+		Expect(echo.(*Message).GetRound1Digest().GetScheduleVersion()).To(Equal(SignScheduleVersion))
 	})
 
 	It("GetEchoMessage returns Err1/Err2 payloads for abort echo", func() {

@@ -281,6 +281,8 @@ PR-A checklist：
 
   会话建立时版本不一致 → **立即失败**，避免难以诊断的行为分歧。
 
+  **落地**：`Round1DigestMsg.schedule_version`（首包、+0 RTT）。Accept 时与本地 `SignScheduleVersion` 比对，不一致 → `ErrScheduleMismatch` + blame 发送方。缺省/空串同样拒绝（旧节点快失败）。该字段进入 Echo 载荷，与 digest 表一并绑定。
+
 ---
 
 ## 7. 验收标准
@@ -337,3 +339,4 @@ A7 ↔ §4.3「实现必测」/ INV-1；A8 ↔ §4.2「冲突优先」/ INV-2。
 | 2026-09-14 | 评审增补：§0 结论；§3.1 因果基础；§4.4 硬守卫与 INV；§5.1 Err2/IA-06；§6.3 调度版本；A7/A8；可进 PR-A |
 | 2026-09-14 | §6.1.1 确认 MsgMain 仅 P1 Finalize / P2 OnAbort / P3 超时；收窄「唯一 Next」；§6.1.2 PR-A grep |
 | 2026-09-14 | **代码落地**：`coFlightBarrier` + `MultiCollectHandler`；R1–R3 Echo‖Reveal 同飞；R4 成功路径无 Echo；`SignScheduleVersion=coflight-v1` |
+| 2026-09-15 | PR-D：`Round1Digest.schedule_version` 首包校验 → `ErrScheduleMismatch`（+0 RTT） |
